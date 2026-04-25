@@ -1,0 +1,35 @@
+# Production overrides.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.docker.prod up -d --build
+#
+# Architecture:
+#   Single entry point → http://<host>:80  (frontend nginx container)
+#     /        → React static files  (served directly by nginx)
+#     /api/*   → NestJS backend      (proxied by nginx; /api prefix is stripped)
+#   The database and backend are NOT exposed on the host; they live in the
+#   internal Docker network only.
+#
+#   Migrations run automatically before the NestJS server starts.
+
+services:
+
+  api:
+    build:
+      target: production
+    command: >
+      sh -c "npx prisma migrate deploy && node dist/main"
+
+  frontend:
+    build:
+      target: production
+      args:
+        VITE_API_URL:        ${VITE_API_URL}
+        VITE_API_PUBLIC_URL: ${VITE_API_PUBLIC_URL}
+    # The production frontend image IS nginx – it serves the built React app
+    # and forwards /api/* to the backend using the nginx.conf below.
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api

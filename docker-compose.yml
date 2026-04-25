@@ -1,0 +1,66 @@
+# Base compose file – shared service definitions.
+# Do NOT run this file directly. Use one of:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml  --env-file .env.docker.dev  up
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.docker.prod up --build
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: splitmoney-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB:       ${POSTGRES_DB:-splitmoney}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - splitmoney-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── NestJS backend ──────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./money-split-backend
+      dockerfile: Dockerfile
+    container_name: splitmoney-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:          postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-splitmoney}?schema=public
+      JWT_SECRET:            ${JWT_SECRET}
+      JWT_EXPIRES_IN:        ${JWT_EXPIRES_IN:-7d}
+      PORT:                  3000
+      NODE_ENV:              ${NODE_ENV:-production}
+      GOOGLE_CLIENT_ID:      ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET:  ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL:   ${GOOGLE_CALLBACK_URL}
+      FRONTEND_URL:          ${FRONTEND_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - splitmoney-network
+
+  # ── React / Vite frontend ───────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./money-split-app
+      dockerfile: Dockerfile
+    container_name: splitmoney-frontend
+    restart: unless-stopped
+    networks:
+      - splitmoney-network
+
+networks:
+  splitmoney-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

@@ -1,0 +1,48 @@
+# Development overrides.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.docker.dev up
+#
+# What this gives you:
+#   - Backend:  NestJS in watch mode (src/ mounted so edits reload instantly)
+#   - Frontend: Vite dev server with HMR (src/ mounted)
+#   - DB:       PostgreSQL exposed on localhost:5432 for local tooling / Prisma Studio
+#   - API:      exposed on localhost:3000
+#   - Frontend: exposed on localhost:5173
+#   - Migrations run automatically on api startup
+
+services:
+
+  db:
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      target: development
+    volumes:
+      # Live-reload: mount source so Nest file-watcher picks up changes
+      - ./money-split-backend/src:/app/src:ro
+      - ./money-split-backend/prisma:/app/prisma:ro
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+    # Run migrations then start the dev server
+    command: >
+      sh -c "npx prisma migrate deploy && npm run start:dev"
+
+  frontend:
+    depends_on:
+      - api
+    build:
+      target: development
+    volumes:
+      # Live-reload: mount source so Vite picks up changes
+      - ./money-split-app/src:/app/src:ro
+      - ./money-split-app/public:/app/public:ro
+      - ./money-split-app/index.html:/app/index.html:ro
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL:        ${VITE_API_URL:-http://localhost:3000}
+      VITE_API_PUBLIC_URL: ${VITE_API_PUBLIC_URL:-http://localhost:3000}

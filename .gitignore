@@ -1,0 +1,34 @@
+# Environment Variables
+.env
+.env.local
+.env.production
+.env.*.local
+# Docker env overrides with real secrets (keep .env.docker.dev / .env.docker.prod as templates)
+.env.docker.dev.local
+.env.docker.prod.local
+
+# Docker
+docker-compose.override.yml
+
+# Database Backups
+*.sql
+backups/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+temp/
