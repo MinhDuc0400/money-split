@@ -1,0 +1,6 @@
+[submodule "money-split-app"]
+	path = money-split-app
+	url = https://github.com/MinhDuc0400/split-money-app.git
+[submodule "money-split-backend"]
+	path = money-split-backend
+	url = https://github.com/MinhDuc0400/money-split-backend.git
