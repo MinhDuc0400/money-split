@@ -35,3 +35,4 @@ temp/
 
 graphify-out/
 .claude/settings.local.json
+.superpowers/
