@@ -92,8 +92,9 @@ const groupSlice = createSlice({
         }
       })
       .addCase(deleteExpense.fulfilled, (state, a) => {
-        for (const gid of Object.keys(state.expenses)) {
-          state.expenses[gid] = state.expenses[gid].filter(e => e.id !== a.payload);
+        const { groupId, expenseId } = a.meta.arg;
+        if (state.expenses[groupId]) {
+          state.expenses[groupId] = state.expenses[groupId].filter(e => e.id !== expenseId);
         }
       });
   },
