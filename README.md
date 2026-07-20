@@ -5,6 +5,7 @@ A full-stack expense-splitting application.
 | Layer    | Tech                           |
 |----------|--------------------------------|
 | Frontend | React 19 + Vite + Tailwind CSS |
+| Mobile   | React Native + Expo            |
 | Backend  | NestJS + Prisma ORM            |
 | Database | PostgreSQL 15                  |
 | Proxy    | nginx (production only)        |
@@ -16,6 +17,7 @@ A full-stack expense-splitting application.
 ```
 money-split/
 ├── money-split-app/         # React / Vite frontend
+├── money-split-mobile/      # React Native / Expo mobile app
 ├── money-split-backend/     # NestJS backend
 ├── docker-compose.yml       # Base service definitions (do not run directly)
 ├── docker-compose.dev.yml   # Development overrides  (hot-reload, exposed ports)
@@ -96,6 +98,34 @@ docker compose \
 | Frontend | http://localhost:5173 | Vite dev server with HMR        |
 | Backend  | http://localhost:3000 | NestJS watch mode (auto-reload) |
 | Database | localhost:5432        | Exposed for local tools         |
+
+### Mobile (Expo) — connecting to the Docker backend
+
+The mobile app runs outside Docker (on a simulator or physical device). Start the
+Docker stack first, then launch Expo from the `money-split-mobile/` directory:
+
+```bash
+cd money-split-mobile
+npx expo start
+```
+
+Set `EXPO_PUBLIC_API_URL` in `money-split-mobile/.env` to the URL your device
+can reach:
+
+| Target              | URL                           |
+|---------------------|-------------------------------|
+| iOS Simulator       | `http://localhost:3000`       |
+| Android Emulator    | `http://10.0.2.2:3000`        |
+| Physical device     | `http://<your-LAN-IP>:3000`   |
+
+Find your LAN IP on macOS:
+
+```bash
+ipconfig getifaddr en0
+```
+
+> **CORS note:** The backend permits requests with no `Origin` header (React
+> Native default) in development, so no extra backend config is needed.
 
 ### Swagger API Docs (dev only)
 
@@ -233,6 +263,8 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env.d
 | `FRONTEND_URL` | api | Browser-facing URL; used for CORS and OAuth redirects |
 | `VITE_API_URL` | frontend | Backend URL as seen from the **browser** (baked into the build) |
 | `VITE_API_PUBLIC_URL` | frontend | Public URL for Google OAuth redirect (browser-facing) |
+| `EXPO_PUBLIC_API_URL` | mobile | Backend URL as seen from the device/simulator (see Mobile section) |
+| `EXPO_PUBLIC_API_PUBLIC_URL` | mobile | Public URL for OAuth redirect (mobile-facing) |
 
 > ⚠️ **Never commit real secrets.** The `.env.docker.prod` file in this repo
 > contains only placeholders. Keep real credentials in `.env.docker.prod.local`
@@ -281,3 +313,4 @@ See the individual project READMEs for local (non-Docker) setup:
 
 - [`money-split-backend/README.md`](./money-split-backend/README.md)
 - [`money-split-app/README.md`](./money-split-app/README.md)
+- [`money-split-mobile/GUIDELINE.md`](./money-split-mobile/GUIDELINE.md)
