@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Split Money",
+    "slug": "money-split-mobile",
+    "scheme": "money-split",
+    "version": "1.0.0",
+    "platforms": ["ios", "android"],
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": { "backgroundColor": "#3D5AFE" },
+    "ios": { "supportsTablet": false, "bundleIdentifier": "com.ducnguyen.splitmoney" },
+    "android": { "package": "com.ducnguyen.splitmoney", "adaptiveIcon": { "backgroundColor": "#3D5AFE" } },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": { "typedRoutes": true }
+  }
+}
