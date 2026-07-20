@@ -48,6 +48,6 @@ export const typography = {
   bodyMedium: { fontSize: 15, lineHeight: 22, fontWeight: '500' as const },
   caption: { fontSize: 13, lineHeight: 18, fontWeight: '400' as const },
   micro: { fontSize: 11, lineHeight: 14, fontWeight: '500' as const },
-  currencyLarge: { fontSize: 28, lineHeight: 34, fontWeight: '700' as const, fontVariant: ['tabular-nums'] as const },
-  currencyInline: { fontSize: 15, lineHeight: 22, fontWeight: '600' as const, fontVariant: ['tabular-nums'] as const },
+  currencyLarge: { fontSize: 28, lineHeight: 34, fontWeight: '700' as const, fontVariant: ['tabular-nums'] as ['tabular-nums'] },
+  currencyInline: { fontSize: 15, lineHeight: 22, fontWeight: '600' as const, fontVariant: ['tabular-nums'] as ['tabular-nums'] },
 };
