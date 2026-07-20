@@ -1,7 +1,8 @@
 # money-split Mobile — Design Spec
 
 Date: 2026-07-08
-Status: Approved for planning
+Updated: 2026-07-20
+Status: Implementation plan written → docs/superpowers/plans/2026-07-20-mobile-app.md
 
 ## 1. Vision & Scope
 
