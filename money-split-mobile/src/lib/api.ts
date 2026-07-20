@@ -26,7 +26,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
   if (res.status === 401) {
     store.dispatch(logout());
-    SecureStore.deleteItemAsync('jwt_token');
+    await SecureStore.deleteItemAsync('jwt_token');
     throw new Error('Session expired. Please log in again.');
   }
 
