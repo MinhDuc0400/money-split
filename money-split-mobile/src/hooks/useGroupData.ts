@@ -16,11 +16,13 @@ export function useGroupData(groupId: string) {
     dispatch(fetchTransactions(groupId));
   }, [groupId]);
 
-  function refresh() {
-    dispatch(fetchGroupDetail(groupId));
-    dispatch(fetchGroupBalances(groupId));
-    dispatch(fetchSettlements(groupId));
-    dispatch(fetchTransactions(groupId));
+  async function refresh() {
+    await Promise.all([
+      dispatch(fetchGroupDetail(groupId)),
+      dispatch(fetchGroupBalances(groupId)),
+      dispatch(fetchSettlements(groupId)),
+      dispatch(fetchTransactions(groupId)),
+    ]);
   }
 
   return { group, balances, settlements, transactions, refresh };
