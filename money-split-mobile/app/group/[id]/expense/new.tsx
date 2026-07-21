@@ -19,7 +19,7 @@ const schema = z.object({
   amount: z.string().min(1).refine(v => parseFloat(v) > 0, 'Amount must be positive'),
   description: z.string().min(1, 'Description required'),
   payerId: z.string().min(1, 'Select who paid'),
-  splitType: z.enum(['EQUAL', 'EXACT', 'PERCENTAGE', 'SHARES']),
+  splitType: z.enum(['EVEN', 'EXACT', 'PERCENTAGE', 'SHARES']),
   splits: z.array(z.object({ memberId: z.string(), amount: z.string().optional(), percentage: z.string().optional(), share: z.string().optional() })),
 });
 
@@ -44,7 +44,7 @@ export default function NewExpenseScreen() {
       amount: '0',
       description: '',
       payerId: myMemberId,
-      splitType: 'EQUAL',
+      splitType: 'EVEN',
       splits: group?.members.map(m => ({ memberId: m.id })) ?? [],
     },
   });
@@ -57,7 +57,7 @@ export default function NewExpenseScreen() {
       const total = parseFloat(data.amount);
       let splits: unknown[];
 
-      if (data.splitType === 'EQUAL') {
+      if (data.splitType === 'EVEN') {
         const each = total / members.length;
         splits = members.map(m => ({ memberId: m.id, amount: parseFloat(each.toFixed(2)) }));
       } else {
@@ -73,8 +73,8 @@ export default function NewExpenseScreen() {
         data: {
           description: data.description,
           amount: total,
-          payerId: data.payerId,
           splitType: data.splitType,
+          payers: [{ memberId: data.payerId, amount: total }],
           splits,
           date: new Date().toISOString(),
         },

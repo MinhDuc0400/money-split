@@ -23,7 +23,7 @@ export interface Group {
   createdById: string;
 }
 
-export type SplitType = 'EQUAL' | 'EXACT' | 'PERCENTAGE' | 'SHARES';
+export type SplitType = 'EVEN' | 'EXACT' | 'PERCENTAGE' | 'SHARES';
 
 export interface ExpenseSplit {
   id: string;

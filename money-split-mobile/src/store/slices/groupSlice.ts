@@ -29,10 +29,10 @@ export const deleteExpense = createAsyncThunk('group/deleteExpense', async ({ gr
 });
 
 export const settleUp = createAsyncThunk('group/settleUp', ({ groupId, data }: { groupId: string; data: unknown }) =>
-  api.post<Settlement>(`/groups/${groupId}/settle-up`, data));
+  api.post<Settlement>(`/groups/${groupId}/settlements`, data));
 
 export const settleAll = createAsyncThunk('group/settleAll', (groupId: string) =>
-  api.post<void>(`/groups/${groupId}/settlements/settle-all`, {}));
+  api.post<void>(`/groups/${groupId}/settle-up`, {}));
 
 const groupSlice = createSlice({
   name: 'group',

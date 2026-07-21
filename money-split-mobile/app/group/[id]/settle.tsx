@@ -33,7 +33,7 @@ export default function SettleScreen() {
   async function confirmSettle() {
     if (!selected) return;
     try {
-      await dispatch(settleUp({ groupId: id, data: { payerId: selected.fromMemberId, payeeId: selected.toMemberId, amount: selected.amount, currency: group?.currency ?? 'USD' } })).unwrap();
+      await dispatch(settleUp({ groupId: id, data: { fromId: selected.fromMemberId, toId: selected.toMemberId, amount: selected.amount, currency: group?.currency ?? 'USD' } })).unwrap();
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       sheetRef.current?.close();
       dispatch(fetchGroupBalances(id));

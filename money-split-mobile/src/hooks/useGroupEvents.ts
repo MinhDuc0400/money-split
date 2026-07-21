@@ -23,7 +23,7 @@ export function useGroupEvents(groupId: string) {
     const socket = getSocket(token);
 
     function joinRoom() {
-      socket.emit('join_group', groupId);
+      socket.emit('join_group', { groupId });
     }
 
     socket.on('connect', joinRoom);
@@ -72,7 +72,7 @@ export function useGroupEvents(groupId: string) {
       socket.off('settlement_updated');
       socket.off('member_joined');
       socket.off('group_updated');
-      socket.emit('leave_group', groupId);
+      socket.emit('leave_group', { groupId });
       sub.remove();
     };
   }, [groupId, token, dispatch]);

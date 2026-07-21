@@ -5,7 +5,7 @@ import { GroupMember, SplitType } from '../../types';
 import { ExpenseFormData } from './types';
 
 const SPLIT_TYPES: { key: SplitType; label: string }[] = [
-  { key: 'EQUAL', label: 'Equal' },
+  { key: 'EVEN', label: 'Equal' },
   { key: 'EXACT', label: 'Exact $' },
   { key: 'PERCENTAGE', label: '%' },
   { key: 'SHARES', label: 'Shares' },

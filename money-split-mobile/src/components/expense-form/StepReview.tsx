@@ -10,7 +10,7 @@ interface Props {
 }
 
 const SPLIT_LABELS: Record<string, string> = {
-  EQUAL: 'Split equally',
+  EVEN: 'Split equally',
   EXACT: 'Split by exact amounts',
   PERCENTAGE: 'Split by percentage',
   SHARES: 'Split by shares',
@@ -41,9 +41,9 @@ export function StepReview({ control, members }: Props) {
       <View style={[s.row, { borderColor: colors.border }]}>
         <Text style={[typography.body, { color: colors.textSecondary }]}>Split</Text>
         <Text style={[typography.bodyMedium, { color: colors.textPrimary }]}>
-          {splitType === 'EQUAL'
-            ? `${SPLIT_LABELS.EQUAL} ($${perPerson}/person)`
-            : SPLIT_LABELS[splitType ?? 'EQUAL']}
+          {splitType === 'EVEN'
+            ? `${SPLIT_LABELS.EVEN} ($${perPerson}/person)`
+            : SPLIT_LABELS[splitType ?? 'EVEN']}
         </Text>
       </View>
     </View>
