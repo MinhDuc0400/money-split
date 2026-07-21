@@ -45,7 +45,13 @@ export default function SettleScreen() {
   }
 
   async function handleSettleAll() {
-    await dispatch(settleAll(id));
+    if (settlements.length === 0) return;
+    const fromId = settlements[0].fromMemberId;
+    const toId = settlements[0].toMemberId;
+    const currency = group?.currency ?? 'USD';
+    const items = settlements.map(s => ({ currency, amount: s.amount }));
+    const idempotencyKey = `${id}-settle-all-${Date.now()}`;
+    await dispatch(settleAll({ groupId: id, fromId, toId, items, idempotencyKey }));
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     dispatch(fetchGroupBalances(id));
     dispatch(fetchSettlements(id));

@@ -31,8 +31,8 @@ export const deleteExpense = createAsyncThunk('group/deleteExpense', async ({ gr
 export const settleUp = createAsyncThunk('group/settleUp', ({ groupId, data }: { groupId: string; data: unknown }) =>
   api.post<Settlement>(`/groups/${groupId}/settlements`, data));
 
-export const settleAll = createAsyncThunk('group/settleAll', (groupId: string) =>
-  api.post<void>(`/groups/${groupId}/settle-up`, {}));
+export const settleAll = createAsyncThunk('group/settleAll', ({ groupId, fromId, toId, items, idempotencyKey }: { groupId: string; fromId: string; toId: string; items: { currency: string; amount: number }[]; idempotencyKey: string }) =>
+  api.post<void>(`/groups/${groupId}/settlements/settle-all`, { fromId, toId, items }, { 'Idempotency-Key': idempotencyKey }));
 
 const groupSlice = createSlice({
   name: 'group',

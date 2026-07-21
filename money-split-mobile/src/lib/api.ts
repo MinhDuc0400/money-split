@@ -8,10 +8,11 @@ async function getToken(): Promise<string | null> {
   return SecureStore.getItemAsync('jwt_token');
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {
   const token = await getToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (extraHeaders) Object.assign(headers, extraHeaders);
 
   let res: Response;
   try {
@@ -41,7 +42,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
-  post: <T>(path: string, body: unknown) => request<T>('POST', path, body),
+  post: <T>(path: string, body: unknown, headers?: Record<string, string>) => request<T>('POST', path, body, headers),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
   delete: (path: string) => request<void>('DELETE', path),
 };
