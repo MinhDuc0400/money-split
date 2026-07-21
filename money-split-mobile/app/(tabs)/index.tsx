@@ -29,9 +29,9 @@ export default function GroupsScreen() {
   }
 
   function getMyBalance(groupId: string): number {
-    const memberBalances = balances[groupId] ?? [];
+    const memberBalances = Array.isArray(balances[groupId]) ? balances[groupId] : [];
     const group = groups.find((g) => g.id === groupId);
-    const myMemberId = group?.members.find((m) => m.userId === user?.id)?.id;
+    const myMemberId = group?.members?.find((m) => m.userId === user?.id)?.id;
     const me = memberBalances.find((b) => b.memberId === myMemberId);
     return me?.balance ?? 0;
   }

@@ -62,11 +62,10 @@ export interface MemberBalance {
 }
 
 export interface SettlementSuggestion {
-  fromMemberId: string;
-  fromName: string;
-  toMemberId: string;
-  toName: string;
+  from: { memberId: string; name?: string; avatarUrl: string | null };
+  to: { memberId: string; name?: string; avatarUrl: string | null };
   amount: number;
+  currency: string;
 }
 
 export interface HistoryTransaction {

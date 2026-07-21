@@ -21,7 +21,7 @@ export default function GroupDetailScreen() {
 
   useGroupEvents(id);
 
-  const myMemberId = group?.members.find(m => m.userId === user?.id)?.id;
+  const myMemberId = group?.members?.find(m => m.userId === user?.id)?.id;
   const myBalance = balances.find(b => b.memberId === myMemberId)?.balance ?? 0;
 
   async function onRefresh() { setRefreshing(true); refresh(); setRefreshing(false); }

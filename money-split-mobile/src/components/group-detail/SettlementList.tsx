@@ -21,12 +21,12 @@ export function SettlementList({ suggestions, onSettle, myMemberId }: Props) {
   return (
     <View>
       {suggestions.map((s, i) => {
-        const isMe = s.fromMemberId === myMemberId;
+        const isMe = s.from.memberId === myMemberId;
         return (
           <View key={i} style={[style.row, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.card, padding: spacing[16], marginBottom: spacing[8] }]}>
             <View style={{ flex: 1 }}>
               <Text style={[typography.h3, { color: colors.textPrimary }]}>
-                {isMe ? 'You' : s.fromName} → {s.toName}
+                {isMe ? 'You' : s.from.name} → {s.to.name}
               </Text>
               <Text style={[typography.currencyInline, { color: colors.owes, marginTop: 4 }]}>${s.amount.toFixed(2)}</Text>
             </View>

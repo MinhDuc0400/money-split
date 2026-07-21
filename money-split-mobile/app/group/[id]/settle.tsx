@@ -20,7 +20,7 @@ export default function SettleScreen() {
   const group = useAppSelector(st => st.group.groups.find(g => g.id === id));
   const settlements = useAppSelector(st => st.group.settlements[id] ?? []);
   const user = useAppSelector(st => st.auth.user);
-  const myMemberId = group?.members.find(m => m.userId === user?.id)?.id ?? '';
+  const myMemberId = group?.members?.find(m => m.userId === user?.id)?.id ?? '';
 
   const [selected, setSelected] = useState<SettlementSuggestion | null>(null);
   const sheetRef = useRef<BottomSheet>(null);
@@ -33,7 +33,7 @@ export default function SettleScreen() {
   async function confirmSettle() {
     if (!selected) return;
     try {
-      await dispatch(settleUp({ groupId: id, data: { fromId: selected.fromMemberId, toId: selected.toMemberId, amount: selected.amount, currency: group?.currency ?? 'USD' } })).unwrap();
+      await dispatch(settleUp({ groupId: id, data: { fromId: selected.from.memberId, toId: selected.to.memberId, amount: selected.amount, currency: selected.currency } })).unwrap();
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       sheetRef.current?.close();
       dispatch(fetchGroupBalances(id));
@@ -46,10 +46,9 @@ export default function SettleScreen() {
 
   async function handleSettleAll() {
     if (settlements.length === 0) return;
-    const fromId = settlements[0].fromMemberId;
-    const toId = settlements[0].toMemberId;
-    const currency = group?.currency ?? 'USD';
-    const items = settlements.map(s => ({ currency, amount: s.amount }));
+    const fromId = settlements[0].from.memberId;
+    const toId = settlements[0].to.memberId;
+    const items = settlements.map(s => ({ currency: s.currency, amount: s.amount }));
     const idempotencyKey = `${id}-settle-all-${Date.now()}`;
     await dispatch(settleAll({ groupId: id, fromId, toId, items, idempotencyKey }));
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -86,7 +85,7 @@ export default function SettleScreen() {
         <BottomSheetView style={{ padding: spacing[24], alignItems: 'center' }}>
           <Text style={[typography.caption, { color: colors.textSecondary, marginBottom: spacing[8] }]}>Confirm payment</Text>
           <Text style={[typography.currencyLarge, { color: colors.textPrimary, marginBottom: spacing[8] }]}>${selected?.amount.toFixed(2)}</Text>
-          <Text style={[typography.body, { color: colors.textSecondary, marginBottom: spacing[24] }]}>to {selected?.toName}</Text>
+          <Text style={[typography.body, { color: colors.textSecondary, marginBottom: spacing[24] }]}>to {selected?.to.name}</Text>
           <TouchableOpacity onPress={confirmSettle} style={[{ backgroundColor: colors.accent, borderRadius: radius.button, width: '100%', height: 50, alignItems: 'center', justifyContent: 'center' }]}>
             <Text style={[typography.bodyMedium, { color: '#fff' }]}>Confirm Settlement</Text>
           </TouchableOpacity>

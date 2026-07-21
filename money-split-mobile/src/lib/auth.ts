@@ -4,9 +4,9 @@ import * as SecureStore from 'expo-secure-store';
 const API_PUBLIC = process.env.EXPO_PUBLIC_API_PUBLIC_URL!;
 const CALLBACK = 'money-split://auth/callback';
 
-export async function startGoogleLogin(): Promise<void> {
+export async function startGoogleLogin(): Promise<WebBrowser.WebBrowserAuthSessionResult> {
   const url = `${API_PUBLIC}/auth/google/mobile?mobile_redirect=${encodeURIComponent(CALLBACK)}`;
-  await WebBrowser.openAuthSessionAsync(url, CALLBACK);
+  return WebBrowser.openAuthSessionAsync(url, CALLBACK);
 }
 
 export async function saveToken(token: string): Promise<void> {

@@ -10,6 +10,13 @@
       "port": 5173,
       "autoPort": true,
       "cwd": "/Users/ducnguyen/code/money-split/money-split-app"
+    },
+    {
+      "name": "expo-mobile",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["expo", "start", "--ios", "--port", "8081", "--clear"],
+      "port": 8081,
+      "cwd": "/Users/ducnguyen/code/money-split/money-split-mobile"
     }
   ]
 }

@@ -13,7 +13,10 @@ const initialState: GroupState = {
 
 export const fetchGroups = createAsyncThunk('group/fetchGroups', () => api.get<Group[]>('/groups'));
 export const fetchGroupDetail = createAsyncThunk('group/fetchGroupDetail', (id: string) => api.get<Group>(`/groups/${id}`));
-export const fetchGroupBalances = createAsyncThunk('group/fetchGroupBalances', (id: string) => api.get<MemberBalance[]>(`/groups/${id}/balances`));
+export const fetchGroupBalances = createAsyncThunk('group/fetchGroupBalances', async (id: string) => {
+  const byCurrency = await api.get<Record<string, MemberBalance[]>>(`/groups/${id}/balances`);
+  return Object.values(byCurrency ?? {}).flat();
+});
 export const fetchSettlements = createAsyncThunk('group/fetchSettlements', (id: string) => api.get<SettlementSuggestion[]>(`/groups/${id}/settlements`));
 export const fetchTransactions = createAsyncThunk('group/fetchTransactions', (id: string) => api.get<HistoryTransaction[]>(`/groups/${id}/transactions?limit=20`));
 

@@ -1,15 +1,41 @@
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useAppDispatch } from '../src/store/hooks';
+import { setCredentials } from '../src/store/slices/authSlice';
 import { useTheme } from '../src/theme/useTheme';
-import { startGoogleLogin } from '../src/lib/auth';
+import { startGoogleLogin, saveToken, decodeJwtPayload } from '../src/lib/auth';
 
 export default function LoginScreen() {
   const { colors, spacing, radius, typography } = useTheme();
   const [loading, setLoading] = useState(false);
+  const dispatch = useAppDispatch();
+  const router = useRouter();
 
   async function handleGoogleLogin() {
     setLoading(true);
-    try { await startGoogleLogin(); } finally { setLoading(false); }
+    try {
+      const result = await startGoogleLogin();
+      if (result.type !== 'success' || !result.url) return;
+      const token = new URL(result.url).searchParams.get('token');
+      if (!token) return;
+      await saveToken(token);
+      const payload = decodeJwtPayload(token);
+      dispatch(setCredentials({
+        token,
+        user: {
+          id: payload.sub as string,
+          name: payload.name as string,
+          email: payload.email as string,
+          avatarUrl: (payload.avatarUrl as string | undefined) ?? null,
+        },
+      }));
+      router.replace('/(tabs)' as any);
+    } catch (e: any) {
+      Alert.alert('Login error', e?.message ?? String(e));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

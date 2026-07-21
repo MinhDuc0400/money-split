@@ -34,7 +34,7 @@ export function GroupRow({ group, balance, onPress }: Props) {
           {group.name}
         </Text>
         <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 2 }]}>
-          {group.members.length} members · {group.currency}
+          {group.members?.length ?? 0} members · {group.currency}
         </Text>
       </View>
       <BalanceBadge amount={balance} />
