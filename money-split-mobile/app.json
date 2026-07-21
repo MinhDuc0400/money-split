@@ -9,7 +9,7 @@
     "icon": "./assets/icon.png",
     "splash": { "backgroundColor": "#3D5AFE" },
     "ios": { "supportsTablet": false, "bundleIdentifier": "com.ducnguyen.splitmoney" },
-    "android": { "package": "com.ducnguyen.splitmoney", "adaptiveIcon": { "backgroundColor": "#3D5AFE" } },
+    "android": { "package": "com.ducnguyen.splitmoney", "adaptiveIcon": { "backgroundColor": "#3D5AFE" }, "intentFilters": [{ "action": "VIEW", "autoVerify": true, "data": [{ "scheme": "money-split" }], "category": ["BROWSABLE", "DEFAULT"] }] },
     "plugins": ["expo-router", "expo-secure-store"],
     "experiments": { "typedRoutes": true }
   }
