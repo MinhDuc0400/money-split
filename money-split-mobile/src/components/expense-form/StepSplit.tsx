@@ -36,7 +36,7 @@ export function StepSplit({ control, members }: Props) {
         name="payerId"
         render={({ field: { value, onChange } }) => (
           <View style={s.memberRow}>
-            {members.map(m => (
+            {members.filter(m => m.userId).map(m => (
               <TouchableOpacity
                 key={m.id}
                 onPress={() => onChange(m.id)}

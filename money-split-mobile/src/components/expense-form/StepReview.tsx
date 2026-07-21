@@ -32,7 +32,7 @@ export function StepReview({ control, members }: Props) {
       </View>
       <View style={[s.row, { borderColor: colors.border }]}>
         <Text style={[typography.body, { color: colors.textSecondary }]}>Amount</Text>
-        <Text style={[typography.currencyInline, { color: colors.textPrimary }]}>${parseFloat(amount || '0').toFixed(2)}</Text>
+        <Text style={[typography.currencyInline, { color: colors.textPrimary, fontVariant: ['tabular-nums'] }]}>${parseFloat(amount || '0').toFixed(2)}</Text>
       </View>
       <View style={[s.row, { borderColor: colors.border }]}>
         <Text style={[typography.body, { color: colors.textSecondary }]}>Paid by</Text>
