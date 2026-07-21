@@ -49,6 +49,7 @@ export default function SettleScreen() {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     dispatch(fetchGroupBalances(id));
     dispatch(fetchSettlements(id));
+    dispatch(fetchTransactions(id));
   }
 
   return (
