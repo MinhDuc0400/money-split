@@ -2,15 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add three new analytics cards (Spending by Person with a Paid/Share toggle, Category breakdown per person, Top Expenses) on a brand new dedicated `/group/:id/analytics` route, which also absorbs the existing Spending by Category card (removed from `Dashboard.tsx`), without touching that card's own fetch/render logic.
+**Goal:** Add three new analytics cards (Spending by Person with a Paid/Share toggle, Category breakdown per person, Top Expenses), which together with the existing Spending by Category card live on an **Analytics tab inside `GroupDetail.tsx`** (`/group/:id/details`), alongside a **Members tab** that embeds the existing member-management UI — without touching any card's own fetch/render logic, and without adding a new route or sidebar nav entry.
 
-**Architecture:** Backend: three new read-only endpoints on the existing `ExpensesController`/`ExpensesService` (`GET /groups/:groupId/expenses/by-person`, `.../by-person-category`, `.../top`), each following the exact currency/date-filter/soft-delete pattern already used by `getSpendingByCategory`. The member×category endpoint aggregates in application code (not raw SQL) because Prisma's `groupBy` can't group by a joined model's field. Frontend: three new dashboard cards (donut, stacked bar, ranked list) added to `groupSlice.ts` state/thunks mirroring the existing `categorySpending` pattern, a new `memberColors.ts` palette module for person-keyed color consistency, and a brand new `GroupAnalytics.tsx` page component — registered as its own route in `App.tsx` and reached via a new sidebar nav entry in `Layout.tsx`, the same pattern already used for `/group/:id/details` and `/group/:id/members` — that renders all four analytics cards (existing + 3 new), fetched on mount. `Dashboard.tsx` reverts to having no charts at all: the `SpendingByCategoryCard` wiring that already lived there is removed as part of this plan, not added to.
+> **Revision note (2026-08-26):** Tasks 1-9 below (backend endpoints, frontend types/state, the four cards, and the original `GroupAnalytics.tsx` page component) are already implemented and committed exactly as originally planned and are unaffected by this revision — do not redo them. The version of Task 8/9 that shipped gave `GroupAnalytics.tsx` its own dedicated `/group/:id/analytics` route, reached from a desktop-only "Current group" sidebar section in `Layout.tsx`. Live browser testing after that shipped surfaced two problems: mobile users had no way to reach `/group/:id/analytics` at all (the sidebar section is `hidden md:flex` and `GroupDetail.tsx`'s own mobile-visible action row never linked to it), and the "Current group" sidebar nav category was judged not to be meaningful UX. Tasks 11-14 below replace that placement: both "Manage members" and "Analytics" become in-page tabs on `GroupDetail.tsx` instead of separate routes, which mobile already reaches. Task 10 (submodule pointer sync) is renumbered to Task 15 and now runs after Task 14.
+
+**Architecture:** Backend: three new read-only endpoints on the existing `ExpensesController`/`ExpensesService` (`GET /groups/:groupId/expenses/by-person`, `.../by-person-category`, `.../top`), each following the exact currency/date-filter/soft-delete pattern already used by `getSpendingByCategory`. The member×category endpoint aggregates in application code (not raw SQL) because Prisma's `groupBy` can't group by a joined model's field. Frontend: three new dashboard cards (donut, stacked bar, ranked list) added to `groupSlice.ts` state/thunks mirroring the existing `categorySpending` pattern, a new `memberColors.ts` palette module for person-keyed color consistency, and a `GroupAnalytics.tsx` component that renders all four analytics cards (existing + 3 new), fetched on mount. `Dashboard.tsx` has no charts at all: the `SpendingByCategoryCard` wiring that used to live there was removed as part of Task 9 and stays removed. As of this revision, `GroupAnalytics.tsx` is no longer a standalone routed page — it's a chrome-stripped panel embedded inside a new `GroupDetail.tsx` tab, alongside a Members tab embedding `MemberManager.tsx` unchanged, switched by a new local pill-style tab control (`GroupDetailTabs.tsx`) with `useState` tab selection (no URL/query-param deep-linking). The `/group/:id/members` and `/group/:id/analytics` routes and the "Current group" sidebar section are removed entirely.
 
 **Tech Stack:** NestJs 11, Prisma (existing `PrismaService`, no schema changes), Jest (backend TDD, mocked Prisma, no live DB), React 19, Redux Toolkit, recharts (`PieChart` — existing usage; `BarChart`/`Bar` — new usage in this codebase), Tailwind.
 
 ## Global Constraints
 
-- Repo paths are `money-split-backend/` and `money-split-app/` as git submodules under the `money-split/` root — not standalone sibling directories. Each submodule is its own git repo; commits happen inside each submodule, then the root repo's submodule pointers are updated and committed separately as the final task (see Task 10), matching this root repo's existing `chore: update submodule pointers to latest commits` commits.
+- Repo paths are `money-split-backend/` and `money-split-app/` as git submodules under the `money-split/` root — not standalone sibling directories. Each submodule is its own git repo; commits happen inside each submodule, then the root repo's submodule pointers are updated and committed separately as the final task (see Task 15), matching this root repo's existing `chore: update submodule pointers to latest commits` commits.
+- **Placement (revised):** Manage Members and Analytics are in-page tabs on `GroupDetail.tsx`, not separate routes. Tab selection is local `useState` on `GroupDetail.tsx` (`'overview' | 'members' | 'analytics'`, default `'overview'`), not URL/query-param deep-linked. Each tab's content is only mounted while `activeTab` matches it (`activeTab === 'members' && <MemberManager />`, etc.) — this is what makes `GroupAnalytics`'s data fetch happen lazily on first tab-open rather than eagerly on `GroupDetail.tsx` mount.
 - Currency/date filtering semantics are byte-for-byte identical across all three new endpoints and the existing `by-category` endpoint: a `currency` query param filters exactly; when omitted, fall back to the group's own `currency` (one `group.findUnique` lookup); `from`/`to` build an optional `date: { gte, lte }` filter (either bound alone is valid); `deletedAt: null` always applied. No cross-currency conversion or aggregation anywhere in this feature — expenses in other currencies are silently excluded, exactly like `by-category` already behaves.
 - No new Prisma schema/migration — all three endpoints read existing `Expense`/`ExpensePayer`/`ExpenseSplit`/`GroupMember` tables.
 - The member×category endpoint aggregates `ExpenseSplit` rows (joined with `Expense.category`) in application code, not Prisma `groupBy` (which cannot group by a related model's field) and not raw SQL (explicit decision — expense volume per group is small).
@@ -31,20 +34,24 @@
 - Modify: `src/expenses/expenses.controller.ts` (add three new `@Get()` endpoints)
 
 **Frontend (`money-split-app/`):**
-- Modify: `src/types/expense.types.ts` (add `PersonSpending`, `PersonCategorySpending`, `TopExpenseItem`)
-- Modify: `src/constants/api.constants.ts` (add `EXPENSES_BY_PERSON`, `EXPENSES_BY_PERSON_CATEGORY`, `EXPENSES_TOP`)
-- Modify: `src/store/slices/groupSlice.ts` (add three `{ data, loading, error }` state triples + thunks + reducers)
-- Create: `src/lib/memberColors.ts`
-- Create: `src/components/dashboard/SpendingByPersonCard.tsx`
-- Create: `src/components/dashboard/CategoryByPersonCard.tsx`
-- Create: `src/components/dashboard/TopExpensesCard.tsx`
-- Create: `src/components/GroupAnalytics.tsx` (new route-level page: header, all four analytics cards, mount-time fetch, edit-modal wiring)
-- Modify: `src/components/Dashboard.tsx` (remove the existing `SpendingByCategoryCard` import, its Redux selectors, its fetch `useEffect`, and its render — reverting the page to zero charts)
-- Modify: `src/App.tsx` (lazy-load `GroupAnalytics` and register the `/group/:id/analytics` route)
-- Modify: `src/components/Layout.tsx` (add the "Analytics" sidebar nav entry next to "Manage members")
+- Modify: `src/types/expense.types.ts` (add `PersonSpending`, `PersonCategorySpending`, `TopExpenseItem`) — Task 4, done
+- Modify: `src/constants/api.constants.ts` (add `EXPENSES_BY_PERSON`, `EXPENSES_BY_PERSON_CATEGORY`, `EXPENSES_TOP`) — Task 4, done
+- Modify: `src/store/slices/groupSlice.ts` (add three `{ data, loading, error }` state triples + thunks + reducers) — Task 4, done
+- Create: `src/lib/memberColors.ts` — Task 5, done
+- Create: `src/components/dashboard/SpendingByPersonCard.tsx` — Task 5, done
+- Create: `src/components/dashboard/CategoryByPersonCard.tsx` — Task 6, done
+- Create: `src/components/dashboard/TopExpensesCard.tsx` — Task 7, done
+- Modify: `src/components/Dashboard.tsx` (removed the `SpendingByCategoryCard` import, its Redux selectors, its fetch `useEffect`, and its render — page has zero charts) — Task 9, done
+- Create: `src/components/group-detail/GroupDetailTabs.tsx` (new pill-style Overview/Members/Analytics tab switcher) — **Task 11, new**
+- Modify: `src/components/GroupAnalytics.tsx` (strip the page-level header/back-button, take a `groupId` prop instead of `useParams()`, drop its own `switchGroup`/`activeGroupId` sync effect and its own `useGroupEvents` call — becomes an embeddable tab panel instead of a routed page) — **Task 12, new**
+- Modify: `src/components/GroupDetail.tsx` (add `activeTab` state and `<GroupDetailTabs>`, wrap existing Overview content in a tab conditional, embed `<MemberManager />` and `<GroupAnalytics groupId={routeId} />` behind the Members/Analytics tab conditionals, repoint the header's "Manage members" button to `setActiveTab('members')`) — **Task 13, new**
+- Modify: `src/App.tsx` (remove the `MemberManager`/`GroupAnalytics` lazy imports and the `/group/:id/members`/`/group/:id/analytics` routes) — **Task 14, new**
+- Modify: `src/components/Layout.tsx` (remove the entire "Current group" sidebar section — the "Manage members" and "Analytics" buttons and their heading — and the now-unused `activeGroupId`/`BarChart3` imports) — **Task 14, new**
 
 **Root repo (`money-split/`):**
-- Modify: `money-split-app` and `money-split-backend` submodule pointers (final commit)
+- Modify: `money-split-app` and `money-split-backend` submodule pointers (final commit — Task 15)
+
+**Not modified by this revision:** `src/components/MemberManager.tsx` stays exactly as committed in an earlier pass — it's embedded inline as `<MemberManager />` with no code changes, since it already has no page-level chrome to strip.
 
 ---
 
@@ -1564,7 +1571,7 @@ git commit -m "feat: add Top Expenses ranked list card"
 - Consumes: `SpendingByCategoryCard` (existing, `money-split-app/src/components/dashboard/SpendingByCategoryCard.tsx`, unchanged), `SpendingByPersonCard` (Task 5), `CategoryByPersonCard` (Task 6), `TopExpensesCard` (Task 7), `fetchSpendingByCategory`/`fetchSpendingByPerson`/`fetchSpendingByPersonCategory`/`fetchTopExpenses` thunks and their state (Task 4), `EditExpenseModal` (existing, `money-split-app/src/components/group-detail/EditExpenseModal.tsx`, unchanged), `useGroup()` (existing, `money-split-app/src/context/GroupContext.tsx` — `expenses`, `currency`, `groupName`, `activeGroupId`, `switchGroup`, `updateExpense`).
 - Produces: `GroupAnalytics` component (named export), the render target Task 9 wires into `App.tsx`'s `/group/:id/analytics` route. Not reachable from the UI until Task 9 registers the route — this task only creates the component in isolation, the same way Tasks 5-7 created cards before anything rendered them.
 
-- [ ] **Step 1: Create the page component**
+- [x] **Step 1: Create the page component**
 
 Create `money-split-app/src/components/GroupAnalytics.tsx`:
 
@@ -1725,7 +1732,7 @@ export function GroupAnalytics() {
 }
 ```
 
-- [ ] **Step 2: Typecheck**
+- [x] **Step 2: Typecheck**
 
 ```bash
 cd money-split-app && npx tsc --noEmit
@@ -1733,7 +1740,7 @@ cd money-split-app && npx tsc --noEmit
 
 Expected: no new errors. If `useGroup()`'s destructured `updateExpense` or `expenses` types don't line up exactly with `EditExpenseModal`'s `initialData`/`onSubmit` shape, compare directly against how `money-split-app/src/components/GroupDetail.tsx` (lines 286-325 and 447-453) already does the same derivation — the field names and types must match exactly since both components consume the same `useGroup()` context and the same `EditExpenseModal`.
 
-- [ ] **Step 3: Lint**
+- [x] **Step 3: Lint**
 
 ```bash
 cd money-split-app && npx eslint src/components/GroupAnalytics.tsx
@@ -1741,7 +1748,7 @@ cd money-split-app && npx eslint src/components/GroupAnalytics.tsx
 
 Expected: no new errors (the `eslint-disable-next-line react-hooks/exhaustive-deps` comment is intentional — the mount effect must not depend on `personMetric` or it would refetch all four cards on every metric change in addition to the dedicated `handleMetricChange` fetch).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd money-split-app
@@ -1753,6 +1760,8 @@ git commit -m "feat: add GroupAnalytics page with Spending by Category, Spending
 
 ### Task 9: Frontend — wire the `/group/:id/analytics` route and sidebar nav, remove the chart from Dashboard.tsx
 
+> **Superseded by Tasks 11-14.** This task was implemented and committed exactly as written below (commit `46686c5`) and is kept here as an accurate record of what happened. Live browser testing afterward found the route/sidebar placement it built has a mobile gap and unwanted sidebar UX — Tasks 11-14 below undo the `App.tsx` route and `Layout.tsx` sidebar-section parts of this task (Steps 1-2) and replace them with in-page tabs on `GroupDetail.tsx`. Step 3 of this task (removing `SpendingByCategoryCard` from `Dashboard.tsx`) is untouched by that follow-up and stays as committed.
+
 **Files:**
 - Modify: `money-split-app/src/App.tsx`
 - Modify: `money-split-app/src/components/Layout.tsx`
@@ -1762,7 +1771,7 @@ git commit -m "feat: add GroupAnalytics page with Spending by Category, Spending
 - Consumes: `GroupAnalytics` (Task 8).
 - Produces: the `/group/:id/analytics` route; a new "Analytics" sidebar nav button in `Layout.tsx`'s "Current group" section; `Dashboard.tsx` reverted to zero charts (no `SpendingByCategoryCard`, no `categorySpending` state, no fetch effect).
 
-- [ ] **Step 1: Register the route in `App.tsx`**
+- [x] **Step 1: Register the route in `App.tsx`**
 
 In `money-split-app/src/App.tsx`, add the lazy import directly after the existing `MemberManager` lazy import (currently line 22):
 
@@ -1776,7 +1785,7 @@ Add the route directly after the existing `/group/:id/members` route (currently 
 <Route path="/group/:id/analytics" element={<GroupAnalytics />} />
 ```
 
-- [ ] **Step 2: Add the sidebar nav entry in `Layout.tsx`**
+- [x] **Step 2: Add the sidebar nav entry in `Layout.tsx`**
 
 In `money-split-app/src/components/Layout.tsx`, add `BarChart3` to the existing `lucide-react` import (currently line 2, `Users, PlusCircle, LogIn, LogOut, Home, ChevronLeft`):
 
@@ -1806,7 +1815,7 @@ Add a new button directly after the existing "Manage members" button (currently 
 
 (The first button is unchanged — shown only so the new button's placement directly after it is unambiguous.)
 
-- [ ] **Step 3: Remove the `SpendingByCategoryCard` wiring from `Dashboard.tsx`**
+- [x] **Step 3: Remove the `SpendingByCategoryCard` wiring from `Dashboard.tsx`**
 
 In `money-split-app/src/components/Dashboard.tsx`, remove the `SpendingByCategoryCard` import (currently line 8: `import { SpendingByCategoryCard } from './dashboard/SpendingByCategoryCard';`).
 
@@ -1852,7 +1861,7 @@ Remove the card's render block at the end of the JSX (currently lines 120-121):
 
 After these four removals, `Dashboard.tsx` is byte-for-byte the same file it was before this whole feature started — Overview content (summary cards, group details card, quick stats) with no chart of any kind.
 
-- [ ] **Step 4: Typecheck**
+- [x] **Step 4: Typecheck**
 
 ```bash
 cd money-split-app && npx tsc --noEmit
@@ -1860,7 +1869,7 @@ cd money-split-app && npx tsc --noEmit
 
 Expected: no new errors.
 
-- [ ] **Step 5: Lint**
+- [x] **Step 5: Lint**
 
 ```bash
 cd money-split-app && npx eslint src/App.tsx src/components/Layout.tsx src/components/Dashboard.tsx
@@ -1868,7 +1877,7 @@ cd money-split-app && npx eslint src/App.tsx src/components/Layout.tsx src/compo
 
 Expected: no new errors.
 
-- [ ] **Step 6: Manual verification via live preview**
+- [x] **Step 6: Manual verification via live preview**
 
 Start the app (`preview_start` per this session's established pattern — see `money-split-app/.claude/launch.json` and root `.claude/launch.json`), sign in, and navigate to a group with expenses in multiple categories, paid/split across at least two members. Confirm:
 - The Dashboard (`/group/:id`) shows no charts — summary cards, group details card, and quick stats only, exactly as before this feature.
@@ -1882,7 +1891,7 @@ Start the app (`preview_start` per this session's established pattern — see `m
 - A group with no expenses in a category/among a subset of members shows each card's empty state, not a broken chart.
 - Check both light and dark mode, and a 375px viewport.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd money-split-app
@@ -1892,23 +1901,455 @@ git commit -m "feat: wire /group/:id/analytics route and sidebar nav entry, remo
 
 ---
 
-### Task 10: Update root repo submodule pointers
+### Task 11: Frontend — build the `GroupDetailTabs` pill switcher component
+
+**Files:**
+- Create: `money-split-app/src/components/group-detail/GroupDetailTabs.tsx`
+
+**Interfaces:**
+- Produces: `type GroupDetailTab = 'overview' | 'members' | 'analytics'`; `GroupDetailTabs({ activeTab: GroupDetailTab; onTabChange: (tab: GroupDetailTab) => void })`. Task 13 renders `<GroupDetailTabs>` in `GroupDetail.tsx` with `activeTab`/`setActiveTab`.
+
+- [ ] **Step 1: Create the tab switcher**
+
+Create `money-split-app/src/components/group-detail/GroupDetailTabs.tsx`. Visual pattern mirrors `SpendingByPersonCard.tsx`'s Paid/Share pill toggle (`bg-secondary/50 rounded-full p-1` wrapper, `bg-primary text-primary-foreground` active pill, `text-muted-foreground` inactive) — not the pre-existing but unused `group-detail/SectionTabs.tsx` (a different, dead 2-tab component from unrelated earlier work with a `bg-card shadow-sm` active style; confirmed via `grep -rn "SectionTabs" src` that nothing imports it):
+
+```typescript
+import { LayoutDashboard, Users, BarChart3 } from 'lucide-react';
+import { cn } from '../../lib/utils';
+
+export type GroupDetailTab = 'overview' | 'members' | 'analytics';
+
+interface GroupDetailTabsProps {
+    activeTab: GroupDetailTab;
+    onTabChange: (tab: GroupDetailTab) => void;
+}
+
+const TABS: { id: GroupDetailTab; label: string; icon: typeof LayoutDashboard }[] = [
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'members', label: 'Members', icon: Users },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+];
+
+export function GroupDetailTabs({ activeTab, onTabChange }: GroupDetailTabsProps) {
+    return (
+        <div className="flex gap-1 bg-secondary/50 rounded-full p-1 w-fit">
+            {TABS.map(({ id, label, icon: Icon }) => (
+                <button
+                    key={id}
+                    type="button"
+                    onClick={() => { onTabChange(id); }}
+                    className={cn(
+                        "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-colors",
+                        activeTab === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                    )}
+                >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                </button>
+            ))}
+        </div>
+    );
+}
+```
+
+- [ ] **Step 2: Typecheck**
+
+```bash
+cd money-split-app && npx tsc --noEmit
+```
+
+Expected: no new errors.
+
+- [ ] **Step 3: Lint**
+
+```bash
+cd money-split-app && npx eslint src/components/group-detail/GroupDetailTabs.tsx
+```
+
+Expected: no new errors.
+
+- [ ] **Step 4: Commit**
+
+```bash
+cd money-split-app
+git add src/components/group-detail/GroupDetailTabs.tsx
+git commit -m "feat: add GroupDetailTabs pill switcher for Overview/Members/Analytics"
+```
+
+---
+
+### Task 12: Frontend — strip `GroupAnalytics.tsx`'s page chrome, convert it to an embeddable tab panel
+
+**Files:**
+- Modify: `money-split-app/src/components/GroupAnalytics.tsx`
+
+**Interfaces:**
+- Changes: `GroupAnalytics` no longer reads `id` from `useParams()` — it now takes `{ groupId: string }` as its only prop. It no longer calls `useGroupEvents()` or `switchGroup` itself (both become the embedding parent's responsibility — see Task 13). Its four-card render, its `personMetric` state, its `fetchSpendingByCategory`/`fetchSpendingByPerson`/`fetchSpendingByPersonCategory`/`fetchTopExpenses` dispatches, and its own `editingExpenseId`/`EditExpenseModal` wiring for Top Expenses are otherwise unchanged.
+- Consumes: unchanged (`SpendingByCategoryCard`, `SpendingByPersonCard`, `CategoryByPersonCard`, `TopExpensesCard`, `EditExpenseModal`, the four Redux thunks, `useGroup()` — now only for `expenses`, `currency`, `updateExpense`).
+- Produces: the panel Task 13 renders as `<GroupAnalytics groupId={routeId ?? ''} />` inside `GroupDetail.tsx`'s Analytics tab conditional.
+
+**Why:** the component was a standalone routed page with its own sticky header (back button + "Analytics" title + group name) and its own active-group sync effect. Once it's a tab panel inside an already-mounted `GroupDetail.tsx`, that chrome duplicates the page's real header, and the sync effect duplicates work `GroupDetail.tsx` already does: `GroupDetail.tsx`'s existing mount effect calls `fetchGroupById(routeId)`, whose `fulfilled` reducer already sets Redux `state.groups.activeId` to match the route (`money-split-app/src/store/slices/groupSlice.ts:418`) — so a second `switchGroup` call from the embedded panel is redundant. Likewise `GroupDetail.tsx` already calls `useGroupEvents(routeId ?? '')` once for the whole page; calling it a second time from the embedded panel would register duplicate socket listeners for the same group (confirmed by reading `money-split-app/src/hooks/useGroupEvents.ts`: each call subscribes fresh handlers with no dedup).
+
+- [ ] **Step 1: Remove the page-chrome imports and the header JSX**
+
+In `money-split-app/src/components/GroupAnalytics.tsx`, remove these two import lines:
+
+```typescript
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+```
+
+and remove:
+
+```typescript
+import { useGroupEvents } from '../hooks/useGroupEvents';
+```
+
+Remove the header block from the JSX (currently the `<div className="bg-card/50 backdrop-blur-sm sticky top-0 ...">...</div>` block containing the back button, "Analytics" title, and group name), and change the outer wrapper `<div className="space-y-8 pb-12">` to `<div className="space-y-6">` (the page-level `pb-12`/`space-y-8` spacing was for standalone-page layout; `space-y-6` matches what the inner cards div already used).
+
+- [ ] **Step 2: Switch from `useParams()` to a `groupId` prop**
+
+Change the function signature from:
+
+```typescript
+export function GroupAnalytics() {
+    const navigate = useNavigate();
+    const { id } = useParams<{ id: string }>();
+    useGroupEvents(id ?? '');
+    const { expenses, currency, groupName, activeGroupId, switchGroup, updateExpense } = useGroup();
+    const dispatch = useAppDispatch();
+
+    // Sync active group with URL, same as Dashboard.tsx.
+    useEffect(() => {
+        if (id && id !== activeGroupId) {
+            switchGroup(id);
+        }
+    }, [id, activeGroupId, switchGroup]);
+```
+
+to:
+
+```typescript
+interface GroupAnalyticsProps {
+    groupId: string;
+}
+
+export function GroupAnalytics({ groupId }: GroupAnalyticsProps) {
+    const { expenses, currency, updateExpense } = useGroup();
+    const dispatch = useAppDispatch();
+```
+
+Replace every remaining use of `id` in the file with `groupId`: the mount effect's `if (!id) return;` and the four `dispatch(...)` calls inside it, and `handleMetricChange`'s `if (id) { ... }` body — all become `groupId`/`if (!groupId) return;`/`if (groupId) { ... }` respectively. `groupName` is dropped from the `useGroup()` destructure (it was only used in the removed header).
+
+- [ ] **Step 3: Typecheck**
+
+```bash
+cd money-split-app && npx tsc --noEmit
+```
+
+Expected: no new errors. `GroupAnalytics.tsx` will show an error until Task 13 updates its one call site in `GroupDetail.tsx` — that's expected mid-task; both must land together before the final typecheck in Task 13 passes clean.
+
+- [ ] **Step 4: Lint**
+
+```bash
+cd money-split-app && npx eslint src/components/GroupAnalytics.tsx
+```
+
+Expected: no new errors (once Task 13's call site exists — lint doesn't fail on missing callers, only `tsc` might complain about an unused-export edge case, which does not apply here since `GroupAnalytics` stays a named export).
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd money-split-app
+git add src/components/GroupAnalytics.tsx
+git commit -m "refactor: strip GroupAnalytics page chrome, take groupId prop for tab-panel embedding"
+```
+
+---
+
+### Task 13: Frontend — restructure `GroupDetail.tsx` into Overview/Members/Analytics tabs
+
+**Files:**
+- Modify: `money-split-app/src/components/GroupDetail.tsx`
+
+**Interfaces:**
+- Consumes: `GroupDetailTabs`/`GroupDetailTab` (Task 11), `GroupAnalytics` (Task 12, now `{ groupId: string }`-based), `MemberManager` (existing, unchanged — self-contained via `useGroup()`, no props, no page chrome to strip: confirmed by reading `money-split-app/src/components/MemberManager.tsx` in full, it's the "Add people" card + "Group members" list + "Danger zone" card, nothing else).
+- Produces: `GroupDetail.tsx` renders three tab panels behind local `activeTab` state, defaulting to `'overview'`. No URL/query-param deep-linking.
+
+- [ ] **Step 1: Add imports and tab state**
+
+In `money-split-app/src/components/GroupDetail.tsx`, add after the existing import block (after the `InvitationBox` import, currently line 14):
+
+```typescript
+import { GroupDetailTabs, type GroupDetailTab } from './group-detail/GroupDetailTabs';
+import { MemberManager } from './MemberManager';
+import { GroupAnalytics } from './GroupAnalytics';
+```
+
+Add tab state directly after the existing `const [isAddingExpense, setIsAddingExpense] = useState(false);` (currently line 61):
+
+```typescript
+    const [activeTab, setActiveTab] = useState<GroupDetailTab>('overview');
+```
+
+- [ ] **Step 2: Repoint the header's "Manage members" button**
+
+The header's existing "Manage members" button (currently lines 351-357) navigates to a route that no longer exists after Task 14. Change:
+
+```typescript
+                    <button
+                        onClick={() => { void navigate(`/group/${routeId}/members`); }}
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-widest text-muted-foreground border border-border hover:bg-secondary rounded-xl transition-colors"
+                    >
+                        <Users className="w-3.5 h-3.5" />
+                        Manage members
+                    </button>
+```
+
+to:
+
+```typescript
+                    <button
+                        onClick={() => { setActiveTab('members'); }}
+                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold uppercase tracking-widest text-muted-foreground border border-border hover:bg-secondary rounded-xl transition-colors"
+                    >
+                        <Users className="w-3.5 h-3.5" />
+                        Manage members
+                    </button>
+```
+
+- [ ] **Step 3: Insert the tab switcher below the header**
+
+Directly after the header's closing `</div>` (currently line 378, right before the `{/* Action error alerts */}` comment), add:
+
+```typescript
+            <GroupDetailTabs activeTab={activeTab} onTabChange={setActiveTab} />
+```
+
+- [ ] **Step 4: Wrap the existing Overview content in a tab conditional**
+
+The settlement-plan-list, balance-cards, member-balances, and history sections (currently the four blocks between the "Action error alerts" block and the `{/* Edit Modal */}` comment, i.e. currently lines 394-444: the `<SettlementPlanList .../>` block, the owed/owing `BalanceCard` row, the "Group balances" `MemberBalancesList` block, and the "Payment history" `HistoryList` block) get wrapped in one `activeTab === 'overview' && (...)` block. The action error alerts, and everything from `{/* Edit Modal */}` onward (`EditExpenseModal`, `SettleUpModal`, `SettleAllModal`, `isAddingExpense && <AddExpense .../>`), stay exactly where they are, outside any tab conditional — they're driven by state set from Overview-tab interactions and are already correctly gated by their own `!!editingExpenseId`/`settlingPayment`/`settlingAllItems`/`isAddingExpense` checks, so leaving them unconditionally mounted is unchanged behavior.
+
+Wrap as:
+
+```typescript
+            {activeTab === 'overview' && (
+                <>
+                    {/* Settlement plan first — it answers "what do I do now" */}
+                    <SettlementPlanList
+                        settlements={settlementPlan}
+                        getMemberName={getMemberName}
+                        getMemberAvatar={getMemberAvatar}
+                        isGuestMember={isGuestMember}
+                        onSettle={handleSettleClick}
+                        onSettleAll={handleSettleAllClick}
+                        currentMemberId={currentUserMember?.id}
+                    />
+
+                    {/* Your balance summary */}
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <div className="flex-1">
+                            <BalanceCard type="owed" balances={owedToYou} />
+                        </div>
+                        <div className="flex-1">
+                            <BalanceCard type="owing" balances={youOwe} />
+                        </div>
+                    </div>
+
+                    {/* Member balances */}
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between px-2">
+                            <div className="flex items-center gap-2">
+                                <Users className="w-5 h-5 text-primary" />
+                                <h3 className="font-bold text-lg">Group balances</h3>
+                            </div>
+                        </div>
+                        <MemberBalancesList members={members} serverBalances={groupBalances} />
+                    </div>
+
+                    {/* History */}
+                    <div className="space-y-6">
+                        <div className="flex items-center justify-between px-2">
+                            <h2 className="text-2xl font-bold tracking-tight">Payment history</h2>
+                        </div>
+
+                        <HistoryList
+                            items={visibleTransactionItems}
+                            hasMore={transactions.hasMore}
+                            isLoadingMore={transactions.isLoadingMore}
+                            loadMoreError={transactions.loadMoreError}
+                            onLoadMore={handleLoadMore}
+                            currency={currency}
+                            getMemberName={getMemberName}
+                            onEdit={handleEditClick}
+                            onDelete={handleDeleteClick}
+                            onAddExpense={() => { setIsAddingExpense(true); }}
+                        />
+                    </div>
+                </>
+            )}
+
+            {activeTab === 'members' && <MemberManager />}
+
+            {activeTab === 'analytics' && <GroupAnalytics groupId={routeId ?? ''} />}
+```
+
+(the surrounding JSX — everything before the `{activeTab === 'overview' &&` block and everything from `{/* Edit Modal */}` onward — is unchanged; only these four content blocks move inside the new conditional, and the two new tab panels are added directly after).
+
+- [ ] **Step 5: Typecheck**
+
+```bash
+cd money-split-app && npx tsc --noEmit
+```
+
+Expected: no errors. This is also the point where Task 12's `GroupAnalytics` prop change gets its one real call site — if this fails, check that `groupId={routeId ?? ''}` matches `GroupAnalyticsProps` exactly.
+
+- [ ] **Step 6: Lint**
+
+```bash
+cd money-split-app && npx eslint src/components/GroupDetail.tsx
+```
+
+Expected: no new errors.
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd money-split-app
+git add src/components/GroupDetail.tsx
+git commit -m "feat: restructure GroupDetail into Overview/Members/Analytics tabs"
+```
+
+---
+
+### Task 14: Frontend — remove the `/group/:id/members` and `/group/:id/analytics` routes and the "Current group" sidebar section
+
+**Files:**
+- Modify: `money-split-app/src/App.tsx`
+- Modify: `money-split-app/src/components/Layout.tsx`
+
+**Interfaces:**
+- Removes: the `/group/:id/members` and `/group/:id/analytics` routes and their lazy imports from `App.tsx`; the "Current group" sidebar section (both the "Manage members" and "Analytics" buttons and their heading) from `Layout.tsx`.
+
+- [ ] **Step 1: Remove the two routes and lazy imports from `App.tsx`**
+
+In `money-split-app/src/App.tsx`, remove these two lazy-import lines:
+
+```typescript
+const MemberManager = lazy(() => import('./components/MemberManager').then(m => ({ default: m.MemberManager })));
+const GroupAnalytics = lazy(() => import('./components/GroupAnalytics').then(m => ({ default: m.GroupAnalytics })));
+```
+
+(`MemberManager` and `GroupAnalytics` are now imported directly, non-lazily, inside `GroupDetail.tsx` per Task 13 — consistent with how `GroupDetail.tsx` already imports its other sub-components like `SettlementPlanList`/`EditExpenseModal` directly rather than lazily, since `GroupDetail` itself is already the lazy-loaded unit.)
+
+Remove these two routes:
+
+```typescript
+                    <Route path="/group/:id/members" element={<MemberManager />} />
+                    <Route path="/group/:id/analytics" element={<GroupAnalytics />} />
+```
+
+- [ ] **Step 2: Remove the "Current group" sidebar section from `Layout.tsx`**
+
+In `money-split-app/src/components/Layout.tsx`, remove `BarChart3` from the `lucide-react` import (it's only used by the button being removed):
+
+```typescript
+import { Users, PlusCircle, LogIn, LogOut, Home, ChevronLeft } from 'lucide-react';
+```
+
+Remove `activeGroupId` from the `useGroup()` destructure (it becomes unused once the block below is removed — confirmed by `grep -n "activeGroupId" src/components/Layout.tsx` showing no other usage in this file):
+
+```typescript
+    const { groups, switchGroup } = useGroup();
+```
+
+Remove the entire "Current group" block:
+
+```typescript
+                    {activeGroupId && (
+                        <>
+                            <div className="pt-4 pb-2 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-t border-border/50 mt-2">
+                                Current group
+                            </div>
+
+                            <button
+                                onClick={() => { void navigate(`/group/${activeGroupId}/members`); }}
+                                className={cn("w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors", location.pathname.includes('/members') ? "bg-primary/10 text-primary" : "hover:bg-secondary")}
+                            >
+                                <Users className="w-5 h-5" />
+                                <span className="font-medium">Manage members</span>
+                            </button>
+
+                            <button
+                                onClick={() => { void navigate(`/group/${activeGroupId}/analytics`); }}
+                                className={cn("w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors", location.pathname.includes('/analytics') ? "bg-primary/10 text-primary" : "hover:bg-secondary")}
+                            >
+                                <BarChart3 className="w-5 h-5" />
+                                <span className="font-medium">Analytics</span>
+                            </button>
+                        </>
+                    )}
+```
+
+`Users` stays imported — it's still used by the mobile bottom-nav's "Groups" `NavItem`.
+
+- [ ] **Step 3: Typecheck**
+
+```bash
+cd money-split-app && npx tsc --noEmit
+```
+
+Expected: no new errors.
+
+- [ ] **Step 4: Lint**
+
+```bash
+cd money-split-app && npx eslint src/App.tsx src/components/Layout.tsx
+```
+
+Expected: no new errors.
+
+- [ ] **Step 5: Manual verification via live preview**
+
+Start the app (`preview_start` per this session's established pattern), sign in, and navigate to a group with expenses in multiple categories, paid/split across at least two members. Confirm:
+- Navigating to a group from the sidebar or `/groups` lands on `/group/:id/details` and shows the Overview tab by default.
+- The sidebar no longer shows a "Current group" section at any viewport — it stops after "Create or join group".
+- The `GroupDetailTabs` pill row (Overview/Members/Analytics) renders directly under the header, on both desktop and a 375px mobile viewport.
+- Clicking "Members" shows `MemberManager`'s content (add people, group members list, danger zone) in place of the Overview content; clicking the header's "Manage members" button does the same.
+- Clicking "Analytics" shows, in order: Spending by Category, Spending by Person, Category breakdown per person, Top Expenses — with no page-chrome header duplicating `GroupDetail.tsx`'s own header.
+- Toggling "Paid"/"Share" on Spending by Person still works from inside the Analytics tab.
+- Top Expenses row clicks still open the edit-expense modal pre-filled correctly, and saving updates the row.
+- Switching between tabs and back does not lose Overview data (settlement plan, balances, history) or force a jarring reload.
+- Visiting `/group/:id/members` or `/group/:id/analytics` directly (old bookmarked URL) falls through to the catch-all route and redirects to `/` (matches existing `<Route path="*" element={<Navigate to="/" replace />} />` behavior — no dedicated redirect is added for these retired paths, consistent with how this app has no other legacy-URL redirect precedent).
+- Check both light and dark mode.
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd money-split-app
+git add src/App.tsx src/components/Layout.tsx
+git commit -m "refactor: remove /group/:id/members and /group/:id/analytics routes, remove Current group sidebar section"
+```
+
+---
+
+### Task 15: Update root repo submodule pointers
 
 **Files:**
 - Modify: `money-split-app` (submodule pointer)
 - Modify: `money-split-backend` (submodule pointer)
 
-**Interfaces:** None — this task only updates the parent repo's recorded submodule commits to point at the new commits made in Tasks 1-9.
+**Interfaces:** None — this task only updates the parent repo's recorded submodule commits to point at the new commits made in Tasks 1-14.
 
 - [ ] **Step 1: Verify both submodules are on their latest commits**
 
 ```bash
 cd /Users/ducnguyen/code/money-split
 git -C money-split-backend log --oneline -3
-git -C money-split-app log --oneline -6
+git -C money-split-app log --oneline -10
 ```
 
-Expected: the backend log shows the three commits from Tasks 1-3 at the top; the app log shows the six commits from Tasks 4-9 at the top.
+Expected: the backend log shows the three commits from Tasks 1-3 at the top (unchanged from before this revision); the app log shows ten commits at the top — the six from Tasks 4-9 plus the four new ones from Tasks 11-14.
 
 - [ ] **Step 2: Stage and commit the updated submodule pointers in the root repo**
 
