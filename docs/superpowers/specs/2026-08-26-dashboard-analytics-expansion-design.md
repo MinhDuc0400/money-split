@@ -11,7 +11,7 @@ This design adds three new analytics cards that answer the second question: how 
 - Add a **Spending by Person** donut chart with a Paid/Share toggle.
 - Add a **Category breakdown per person** stacked bar chart (Share amounts only).
 - Add a **Top Expenses** ranked list (top 5, clickable, opens the existing edit-expense modal).
-- Give these three cards, plus the existing category donut, a home on the Dashboard page without cluttering the default view.
+- Give these three cards, plus the existing category donut, a home on a dedicated group-level Analytics page, reached from the sidebar, without cluttering the Dashboard's default Overview content.
 - Keep currency handling identical to the existing `by-category` endpoint: single-currency filter, no cross-currency conversion/aggregation.
 - Keep member-to-color mapping consistent between the two charts that key color by person.
 
@@ -23,16 +23,21 @@ This design adds three new analytics cards that answer the second question: how 
 - Any change to how `SpendingByCategoryCard.tsx` fetches or renders its own data — it keeps its current props, thunk, and behavior unchanged; it only moves (see Placement below).
 - Frontend automated test infrastructure. Confirmed in this pass: `money-split-app/package.json` has no test runner (`scripts` are only `dev`/`build`/`lint`/`preview`; no `jest`/`vitest`/`@testing-library/*` dependency), and no `SpendingByCategoryCard` test file exists anywhere in `money-split-app/src`. This repo's established frontend verification is `tsc --noEmit`, lint, and manual/live-preview click-through (confirmed by the `2026-07-07-multi-currency-settle-all` plan's Global Constraints and reconfirmed here) — the three new cards follow that same verification path, not new test files.
 
-## Placement: Analytics tab on the Dashboard
+## Placement: dedicated `/group/:id/analytics` route
 
-No in-page tab/segmented-content component exists anywhere in this app today (`Layout.tsx`'s tabs are the bottom app-level nav — Overview/Groups/etc. — a different thing). Rather than stacking four charts into the always-visible Dashboard body (which is already a fairly tall page: summary cards, group details, quick stats), this design adds a small new two-way segmented control at the point where the category chart currently sits:
+Rather than a local tab toggle inside `Dashboard.tsx`, this design gives analytics its own route and page component — the same pattern this app already uses for `/group/:id/details` (`GroupDetail.tsx`) and `/group/:id/members` (`MemberManager.tsx`), both registered as sibling `<Route>`s to `/group/:id` (`Dashboard`) in `money-split-app/src/App.tsx`:
 
-- **"Overview"** (default, selected on load) — the Dashboard exactly as it is today, ending with the Quick Stats row. No charts.
-- **"Analytics"** — reveals all four cards in this order: Spending by Category (existing, unchanged), Spending by Person, Category breakdown per person, Top Expenses.
+```typescript
+<Route path="/group/:id" element={<Dashboard />} />
+<Route path="/group/:id/details" element={<GroupDetail />} />
+<Route path="/group/:id/members" element={<MemberManager />} />
+<Route path="/group/:id/analytics" element={<GroupAnalytics />} />
+```
 
-This is a new, small local component (e.g. `money-split-app/src/components/dashboard/AnalyticsTabs.tsx`), a pill-style toggle matching the app's existing segmented/pill visual language (the same `bg-secondary`/`bg-primary` two-state pattern already used for e.g. the "Optimized" badge and the Settle All modal's currency-picker link) — not a new dependency, not a generic tabs primitive. State is local `useState` in `Dashboard.tsx` (`const [dashboardTab, setDashboardTab] = useState<'overview' | 'analytics'>('overview')`), not persisted or synced to the URL — reopening the page always starts on Overview, matching how the rest of Dashboard state (e.g. no scroll position memory) already behaves.
-
-All four analytics cards' data fetches are gated behind `dashboardTab === 'analytics'` being reached at least once (fetch-on-first-reveal, not fetch-on-mount) to avoid firing three extra network requests for users who never open the tab. Once fetched, switching back to Overview and back to Analytics does not refetch (existing Redux state simply hasn't been cleared) — same caching behavior the category chart already has implicitly today via its `[id, currency, dispatch]` effect.
+- **New page component**: `money-split-app/src/components/GroupAnalytics.tsx`, lazy-loaded in `App.tsx` the same way `GroupDetail`/`MemberManager`/`Dashboard` already are (`const GroupAnalytics = lazy(() => import('./components/GroupAnalytics').then(m => ({ default: m.GroupAnalytics })));`). It renders all four cards in this order: Spending by Category (existing, unchanged), Spending by Person, Category breakdown per person, Top Expenses. It has its own header (mirroring `GroupDetail.tsx`'s sticky header: back button + group name), not a tab toggle — there is no "Overview"/"Analytics" segmented control anywhere.
+- **`Dashboard.tsx` reverts to having zero charts.** The existing `SpendingByCategoryCard` — its import, its `categorySpending`/`categorySpendingLoading`/`categorySpendingError` Redux selectors, its dispatch of `fetchSpendingByCategory` in a `useEffect`, and its render — moves off `Dashboard.tsx` onto `GroupAnalytics.tsx` in full. `Dashboard.tsx`'s Overview content (summary cards, group details card, quick stats) is otherwise untouched.
+- **New sidebar nav entry**: `money-split-app/src/components/Layout.tsx`'s existing "Current group" section (which today only has "Manage members", navigating to `/group/${activeGroupId}/members`) gets an "Analytics" button right next to it, navigating to `/group/${activeGroupId}/analytics`, with its active state keyed on `location.pathname.includes('/analytics')` — following the exact same pattern as the "Manage members" button.
+- All four analytics cards' data fetches happen on a plain `useEffect` when `GroupAnalytics.tsx` mounts (and again when `id` or `currency` changes) — the same shape as how `fetchSpendingByCategory` was originally fetched in `Dashboard.tsx`. Because this is now a dedicated route rather than a tab reveal inside an already-mounted page, there is no "fetch on first reveal" complexity to build: navigating to the route is the reveal.
 
 ## Chart 1: Spending by Person
 
@@ -81,7 +86,7 @@ All four analytics cards' data fetches are gated behind `dashboardTab === 'analy
   ```
 - API constant: `EXPENSES_BY_PERSON: (id: string, currency?: string, metric?: 'paid' | 'share') => ...` added to `API_ENDPOINTS.GROUPS` in `money-split-app/src/constants/api.constants.ts`, next to `EXPENSES_BY_CATEGORY`, building the query string the same way (`?currency=X&metric=Y`, omitting each param when undefined).
 - Redux: in `money-split-app/src/store/slices/groupSlice.ts`, add `spendingByPerson: PersonSpending[] | null`, `spendingByPersonLoading: boolean`, `spendingByPersonError: string | null` to `GroupState`/`initialState`, and a `fetchSpendingByPerson` thunk taking `{ groupId, currency, metric }`, mirroring `fetchSpendingByCategory` (`groupSlice.ts:109-114`) and its three `.addCase` reducers (`groupSlice.ts:519-531`) exactly.
-- `Dashboard.tsx` dispatches `fetchSpendingByPerson({ groupId: id, currency, metric })` once the Analytics tab is first revealed, and again whenever `metric` (lifted to `Dashboard.tsx` state, passed down as a prop + `onMetricChange` to `SpendingByPersonCard`) or `currency` changes — same `useEffect` dependency-array shape as the existing category-spending effect (`Dashboard.tsx:52-58`).
+- `GroupAnalytics.tsx` dispatches `fetchSpendingByPerson({ groupId: id, currency, metric })` on mount and whenever `id` or `currency` changes, and again whenever `metric` changes (lifted to `GroupAnalytics.tsx` state, passed down as a prop + `onMetricChange` to `SpendingByPersonCard`) — the metric-change dispatch happens in the `onMetricChange` handler itself, not through the mount effect's dependency array, so toggling Paid/Share doesn't also retrigger the other three cards' fetches.
 
 ## Chart 2: Category breakdown per person
 
@@ -126,7 +131,7 @@ All four analytics cards' data fetches are gated behind `dashboardTab === 'analy
 - Types: add `PersonCategorySpending` to `money-split-app/src/types/expense.types.ts`.
 - API constant: `EXPENSES_BY_PERSON_CATEGORY: (id: string, currency?: string) => ...`.
 - Redux: `spendingByPersonCategory: PersonCategorySpending[] | null` + loading/error, `fetchSpendingByPersonCategory` thunk, mirroring the same pattern again.
-- Fetched on first Analytics-tab reveal and on `currency` change, same as Chart 1 (no `metric` param here).
+- Fetched on `GroupAnalytics.tsx` mount and on `id`/`currency` change, same as Chart 1 (no `metric` param here).
 
 ## Chart 3: Top Expenses
 
@@ -154,10 +159,10 @@ All four analytics cards' data fetches are gated behind `dashboardTab === 'analy
 ### Frontend
 
 - New component `money-split-app/src/components/dashboard/TopExpensesCard.tsx`: a simple ranked list (rank number or medal-style styling optional, description, category icon, amount right-aligned tabular-nums, payer names as small muted subtext), each row a `<button>` (full-width, left-aligned, hover/active state matching the existing bordered-row density rule from `design-system/MASTER.md` — "dense lists use bordered rows, not a card wrapper per row" — so individual rows are `border-b border-border` inside the one card wrapper, not five separate cards).
-- **Opening the edit modal**: clicking a row does not use the backend response's `TopExpenseItem` directly as `EditExpenseModal`'s `initialData` (that type is intentionally slim — id/description/amount/currency/category/date/payerNames — and does not carry full `splits`/`payers` detail needed by the edit form). Instead, the click handler looks up the full `Expense` object by `id` from the group's already-loaded `expenses` array (`useGroup()`'s `expenses`, which is `activeGroup.expenses` — the complete, unpaginated list `GET /groups/:id` already returns) and derives `initialFormData` the same way `GroupDetail.tsx` already does (`GroupDetail.tsx:298-325`: `expenseToEdit` lookup by id, then the `initialFormData` `useMemo` mapping `description`/`amount`/`currency`/`payerId`/`payers`/`splitType`/`category`/`splits`/`manualAmounts`). `Dashboard.tsx` needs its own `editingExpenseId` state, `updateExpense` from `useGroup()`, and its own `<EditExpenseModal>` render — this exact wiring does not currently exist on `Dashboard.tsx` (only `GroupDetail.tsx` has it today) and must be added there, duplicating the pattern rather than trying to lift it into a shared hook (out of scope for this pass — flagged as a reasonable follow-up refactor, not required here).
+- **Opening the edit modal**: clicking a row does not use the backend response's `TopExpenseItem` directly as `EditExpenseModal`'s `initialData` (that type is intentionally slim — id/description/amount/currency/category/date/payerNames — and does not carry full `splits`/`payers` detail needed by the edit form). Instead, the click handler looks up the full `Expense` object by `id` from the group's already-loaded `expenses` array (`useGroup()`'s `expenses`, the complete, unpaginated list `GET /groups/:id` already returns) and derives `initialFormData` the same way `GroupDetail.tsx` already does (`GroupDetail.tsx:298-325`: `expenseToEdit` lookup by id, then the `initialFormData` `useMemo` mapping `description`/`amount`/`currency`/`payerId`/`payers`/`splitType`/`category`/`splits`/`manualAmounts`). `GroupAnalytics.tsx` needs its own `editingExpenseId` state, `updateExpense` from `useGroup()`, and its own `<EditExpenseModal>` render — this exact wiring does not exist on `Dashboard.tsx` today (only `GroupDetail.tsx` has it) and is added fresh to the new page, duplicating the pattern rather than trying to lift it into a shared hook (out of scope for this pass — flagged as a reasonable follow-up refactor, not required here).
 - Types: add `TopExpenseItem` to `money-split-app/src/types/expense.types.ts`.
 - API constant: `EXPENSES_TOP: (id: string, currency?: string, limit?: number) => ...`.
-- Redux: `topExpenses: TopExpenseItem[] | null` + loading/error, `fetchTopExpenses` thunk, mirroring the same pattern (called with `limit: 5` from `Dashboard.tsx` — the card's fixed top-5 requirement, even though the backend supports up to 20, keeps the door open for a future "see more" without a new endpoint).
+- Redux: `topExpenses: TopExpenseItem[] | null` + loading/error, `fetchTopExpenses` thunk, mirroring the same pattern (called with `limit: 5` from `GroupAnalytics.tsx` — the card's fixed top-5 requirement, even though the backend supports up to 20, keeps the door open for a future "see more" without a new endpoint).
 
 ## Currency and date filtering semantics (all three endpoints)
 
@@ -168,7 +173,7 @@ Identical across `by-category` (existing), `by-person`, `by-person-category`, an
 - Expenses in any other currency are **silently excluded** — there is no cross-currency conversion or a combined multi-currency total anywhere in this feature. This was an explicit decision to stay consistent with the existing `by-category` endpoint's behavior and avoid introducing new conversion logic (the separate `GET /exchange-rates` informational-conversion endpoint from the multi-currency/Settle-All feature is unrelated and unused here).
 - `from`/`to`, when provided, build a `date: { gte: new Date(from), lte: new Date(to) }` filter (either bound may be provided alone). When neither is provided, no date filter is applied — full history.
 - `deletedAt: null` is always applied to exclude soft-deleted expenses.
-- None of the three new endpoints currently have a frontend UI for picking `from`/`to` or a non-default `currency` — the query params exist in the endpoint contract (for parity with `by-category`, which also accepts but doesn't yet expose them in the UI) but this pass's frontend thunks call them with only `groupId`/`currency` (defaulting to the group's currency, matching how `fetchSpendingByCategory` is called from `Dashboard.tsx` today). Date-range filtering UI is out of scope, same as it already is for the category chart.
+- None of the three new endpoints currently have a frontend UI for picking `from`/`to` or a non-default `currency` — the query params exist in the endpoint contract (for parity with `by-category`, which also accepts but doesn't yet expose them in the UI) but this pass's frontend thunks call them with only `groupId`/`currency` (defaulting to the group's currency, matching how `fetchSpendingByCategory` was originally called from `Dashboard.tsx` and is now called from `GroupAnalytics.tsx` instead). Date-range filtering UI is out of scope, same as it already is for the category chart.
 
 ## Color consistency
 

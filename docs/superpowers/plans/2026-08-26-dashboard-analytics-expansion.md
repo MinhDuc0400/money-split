@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add three new Dashboard analytics cards (Spending by Person with a Paid/Share toggle, Category breakdown per person, Top Expenses) behind a new Analytics tab that also absorbs the existing Spending by Category card, without touching that card's own fetch/render logic.
+**Goal:** Add three new analytics cards (Spending by Person with a Paid/Share toggle, Category breakdown per person, Top Expenses) on a brand new dedicated `/group/:id/analytics` route, which also absorbs the existing Spending by Category card (removed from `Dashboard.tsx`), without touching that card's own fetch/render logic.
 
-**Architecture:** Backend: three new read-only endpoints on the existing `ExpensesController`/`ExpensesService` (`GET /groups/:groupId/expenses/by-person`, `.../by-person-category`, `.../top`), each following the exact currency/date-filter/soft-delete pattern already used by `getSpendingByCategory`. The member×category endpoint aggregates in application code (not raw SQL) because Prisma's `groupBy` can't group by a joined model's field. Frontend: three new dashboard cards (donut, stacked bar, ranked list) added to `groupSlice.ts` state/thunks mirroring the existing `categorySpending` pattern, a new `memberColors.ts` palette module for person-keyed color consistency, and a new local two-way tab toggle on `Dashboard.tsx` that gates all four analytics cards (existing + 3 new) behind an "Analytics" view, fetched once on first reveal.
+**Architecture:** Backend: three new read-only endpoints on the existing `ExpensesController`/`ExpensesService` (`GET /groups/:groupId/expenses/by-person`, `.../by-person-category`, `.../top`), each following the exact currency/date-filter/soft-delete pattern already used by `getSpendingByCategory`. The member×category endpoint aggregates in application code (not raw SQL) because Prisma's `groupBy` can't group by a joined model's field. Frontend: three new dashboard cards (donut, stacked bar, ranked list) added to `groupSlice.ts` state/thunks mirroring the existing `categorySpending` pattern, a new `memberColors.ts` palette module for person-keyed color consistency, and a brand new `GroupAnalytics.tsx` page component — registered as its own route in `App.tsx` and reached via a new sidebar nav entry in `Layout.tsx`, the same pattern already used for `/group/:id/details` and `/group/:id/members` — that renders all four analytics cards (existing + 3 new), fetched on mount. `Dashboard.tsx` reverts to having no charts at all: the `SpendingByCategoryCard` wiring that already lived there is removed as part of this plan, not added to.
 
 **Tech Stack:** NestJs 11, Prisma (existing `PrismaService`, no schema changes), Jest (backend TDD, mocked Prisma, no live DB), React 19, Redux Toolkit, recharts (`PieChart` — existing usage; `BarChart`/`Bar` — new usage in this codebase), Tailwind.
 
@@ -38,8 +38,10 @@
 - Create: `src/components/dashboard/SpendingByPersonCard.tsx`
 - Create: `src/components/dashboard/CategoryByPersonCard.tsx`
 - Create: `src/components/dashboard/TopExpensesCard.tsx`
-- Create: `src/components/dashboard/AnalyticsTabs.tsx`
-- Modify: `src/components/Dashboard.tsx` (tab state, fetch gating, edit-modal wiring, render all four analytics cards)
+- Create: `src/components/GroupAnalytics.tsx` (new route-level page: header, all four analytics cards, mount-time fetch, edit-modal wiring)
+- Modify: `src/components/Dashboard.tsx` (remove the existing `SpendingByCategoryCard` import, its Redux selectors, its fetch `useEffect`, and its render — reverting the page to zero charts)
+- Modify: `src/App.tsx` (lazy-load `GroupAnalytics` and register the `/group/:id/analytics` route)
+- Modify: `src/components/Layout.tsx` (add the "Analytics" sidebar nav entry next to "Manage members")
 
 **Root repo (`money-split/`):**
 - Modify: `money-split-app` and `money-split-backend` submodule pointers (final commit)
@@ -57,7 +59,7 @@
 **Interfaces:**
 - Produces: `ExpensesService.getSpendingByPerson(groupId: string, userId: string, currency?: string, from?: string, to?: string, metric?: 'paid' | 'share'): Promise<PersonSpending[]>` where `PersonSpending = { memberId: string; name: string; totalCents: number }`. `GET /groups/:groupId/expenses/by-person?currency=&from=&to=&metric=paid|share` returns `PersonSpending[]` as JSON. Task 4 (frontend) consumes this exact response shape.
 
-- [ ] **Step 1: Add the `PersonSpending` response type**
+- [x] **Step 1: Add the `PersonSpending` response type**
 
 In `money-split-backend/src/expenses/types/expense-responses.type.ts`, add at the end of the file, after the existing `CategorySpending` interface:
 
@@ -69,7 +71,7 @@ export interface PersonSpending {
 }
 ```
 
-- [ ] **Step 2: Add mock methods needed for the new tests**
+- [x] **Step 2: Add mock methods needed for the new tests**
 
 In `money-split-backend/src/expenses/expenses.service.spec.ts`, the `mockPrisma` object (around line 17-47) already has `groupMember: { findMany: jest.fn(), findUnique: jest.fn() }`. Add `groupBy` to the `expensePayer` and `expenseSplit` mocks:
 
@@ -86,7 +88,7 @@ In `money-split-backend/src/expenses/expenses.service.spec.ts`, the `mockPrisma`
 
 (This replaces the existing `expensePayer: { createMany: jest.fn() }` and `expenseSplit: { createMany: jest.fn() }` blocks.)
 
-- [ ] **Step 3: Write the failing tests**
+- [x] **Step 3: Write the failing tests**
 
 Add this new `describe` block to `money-split-backend/src/expenses/expenses.service.spec.ts`, directly after the closing `});` of the `describe('getSpendingByCategory', ...)` block (after line 295, before `describe('updateExpense (category preserve-on-omit)', ...)`):
 
@@ -233,7 +235,7 @@ Add this new `describe` block to `money-split-backend/src/expenses/expenses.serv
   });
 ```
 
-- [ ] **Step 4: Run the tests to verify they fail**
+- [x] **Step 4: Run the tests to verify they fail**
 
 ```bash
 cd money-split-backend && npx jest expenses.service --silent
@@ -241,7 +243,7 @@ cd money-split-backend && npx jest expenses.service --silent
 
 Expected: `FAIL` — `service.getSpendingByPerson is not a function`.
 
-- [ ] **Step 5: Implement `getSpendingByPerson`**
+- [x] **Step 5: Implement `getSpendingByPerson`**
 
 In `money-split-backend/src/expenses/expenses.service.ts`, add the import at the top (extend the existing `types/expense-responses.type` import block, which currently reads `BalancesByCurrency, CategorySpending, ExpenseResponse, PaginatedTransactionHistory, RecommendedSettlement, TransactionHistoryItem, UserBalanceResponse`):
 
@@ -318,7 +320,7 @@ Add this method directly after `getSpendingByCategory` (after its closing `}` ar
   }
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 ```bash
 cd money-split-backend && npx jest expenses.service --silent
@@ -326,7 +328,7 @@ cd money-split-backend && npx jest expenses.service --silent
 
 Expected: `PASS`, all tests including the 7 new ones.
 
-- [ ] **Step 7: Add the controller endpoint**
+- [x] **Step 7: Add the controller endpoint**
 
 In `money-split-backend/src/expenses/expenses.controller.ts`, add `PersonSpending` to the existing type import block (currently `BalancesByCurrency, CategorySpending, ExpenseResponse, PaginatedTransactionHistory, RecommendedSettlement, UserBalanceResponse`):
 
@@ -369,7 +371,7 @@ Add this method to `ExpensesController`, directly after `getSpendingByCategory` 
   }
 ```
 
-- [ ] **Step 8: Typecheck**
+- [x] **Step 8: Typecheck**
 
 ```bash
 cd money-split-backend && npx tsc --noEmit
@@ -377,7 +379,7 @@ cd money-split-backend && npx tsc --noEmit
 
 Expected: no new errors.
 
-- [ ] **Step 9: Run the full backend test suite**
+- [x] **Step 9: Run the full backend test suite**
 
 ```bash
 cd money-split-backend && npx jest --silent
@@ -385,7 +387,7 @@ cd money-split-backend && npx jest --silent
 
 Expected: same pass/fail counts as before this task, plus the 7 new `getSpendingByPerson` tests passing. Any pre-existing unrelated failures stay unchanged.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 cd money-split-backend
@@ -407,7 +409,7 @@ git commit -m "feat: add GET /groups/:groupId/expenses/by-person endpoint"
 - Consumes: `assertActiveMember` (existing, unchanged), `toCents` from `../helpers/number.helper` (existing, unchanged).
 - Produces: `ExpensesService.getSpendingByPersonCategory(groupId: string, userId: string, currency?: string, from?: string, to?: string): Promise<PersonCategorySpending[]>` where `PersonCategorySpending = { memberId: string; name: string; category: string; totalCents: number }`. `GET /groups/:groupId/expenses/by-person-category?currency=&from=&to=` returns `PersonCategorySpending[]` as JSON — a flat list, one row per (member, category) pair with non-zero spend, not pre-nested by member. Task 4/7 (frontend) consume this exact response shape and pivot it client-side.
 
-- [ ] **Step 1: Add the `PersonCategorySpending` response type**
+- [x] **Step 1: Add the `PersonCategorySpending` response type**
 
 In `money-split-backend/src/expenses/types/expense-responses.type.ts`, add at the end of the file, after `PersonSpending`:
 
@@ -420,7 +422,7 @@ export interface PersonCategorySpending {
 }
 ```
 
-- [ ] **Step 2: Add the `expenseSplit.findMany` mock and reuse `groupMember.findMany`**
+- [x] **Step 2: Add the `expenseSplit.findMany` mock and reuse `groupMember.findMany`**
 
 `mockPrisma.expenseSplit` and `mockPrisma.groupMember.findMany` already exist from Task 1's Step 2 and the file's original setup. Add `findMany` to `expenseSplit`:
 
@@ -432,7 +434,7 @@ export interface PersonCategorySpending {
     },
 ```
 
-- [ ] **Step 3: Write the failing tests**
+- [x] **Step 3: Write the failing tests**
 
 Add this new `describe` block directly after the `describe('getSpendingByPerson', ...)` block added in Task 1 (before `describe('updateExpense (category preserve-on-omit)', ...)`):
 
@@ -541,7 +543,7 @@ Add this new `describe` block directly after the `describe('getSpendingByPerson'
   });
 ```
 
-- [ ] **Step 4: Run the tests to verify they fail**
+- [x] **Step 4: Run the tests to verify they fail**
 
 ```bash
 cd money-split-backend && npx jest expenses.service --silent
@@ -549,7 +551,7 @@ cd money-split-backend && npx jest expenses.service --silent
 
 Expected: `FAIL` — `service.getSpendingByPersonCategory is not a function`.
 
-- [ ] **Step 5: Implement `getSpendingByPersonCategory`**
+- [x] **Step 5: Implement `getSpendingByPersonCategory`**
 
 In `money-split-backend/src/expenses/expenses.service.ts`, add `PersonCategorySpending` to the type import block from Task 1 (now `BalancesByCurrency, CategorySpending, ExpenseResponse, PaginatedTransactionHistory, PersonCategorySpending, PersonSpending, RecommendedSettlement, TransactionHistoryItem, UserBalanceResponse`).
 
@@ -627,7 +629,7 @@ Add this method directly after `getSpendingByPerson` (added in Task 1):
   }
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 ```bash
 cd money-split-backend && npx jest expenses.service --silent
@@ -635,7 +637,7 @@ cd money-split-backend && npx jest expenses.service --silent
 
 Expected: `PASS`, all tests including the 6 new ones.
 
-- [ ] **Step 7: Add the controller endpoint**
+- [x] **Step 7: Add the controller endpoint**
 
 In `money-split-backend/src/expenses/expenses.controller.ts`, add `PersonCategorySpending` to the type import block from Task 1.
 
@@ -663,7 +665,7 @@ Add this method directly after `getSpendingByPerson` (added in Task 1):
   }
 ```
 
-- [ ] **Step 8: Typecheck**
+- [x] **Step 8: Typecheck**
 
 ```bash
 cd money-split-backend && npx tsc --noEmit
@@ -671,7 +673,7 @@ cd money-split-backend && npx tsc --noEmit
 
 Expected: no new errors.
 
-- [ ] **Step 9: Run the full backend test suite**
+- [x] **Step 9: Run the full backend test suite**
 
 ```bash
 cd money-split-backend && npx jest --silent
@@ -679,7 +681,7 @@ cd money-split-backend && npx jest --silent
 
 Expected: same pass/fail counts as after Task 1, plus the 6 new `getSpendingByPersonCategory` tests passing.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 cd money-split-backend
@@ -700,7 +702,7 @@ git commit -m "feat: add GET /groups/:groupId/expenses/by-person-category endpoi
 **Interfaces:**
 - Produces: `ExpensesService.getTopExpenses(groupId: string, userId: string, currency?: string, from?: string, to?: string, limit?: number): Promise<TopExpenseItem[]>` (defaults `limit` to `5`) where `TopExpenseItem = { id: string; description: string; amount: number; currency: string; category: string; date: Date; payerNames: string[] }`. `GET /groups/:groupId/expenses/top?currency=&from=&to=&limit=` returns `TopExpenseItem[]` as JSON (`date` serializes to an ISO string over the wire), sorted by `amount` descending, capped at `limit` (controller clamps to a 1-20 range, default 5). Task 4/8 (frontend) consume this exact response shape.
 
-- [ ] **Step 1: Add the `TopExpenseItem` response type**
+- [x] **Step 1: Add the `TopExpenseItem` response type**
 
 In `money-split-backend/src/expenses/types/expense-responses.type.ts`, add at the end of the file, after `PersonCategorySpending`:
 
@@ -716,7 +718,7 @@ export interface TopExpenseItem {
 }
 ```
 
-- [ ] **Step 2: Add the `expense.findMany` mock**
+- [x] **Step 2: Add the `expense.findMany` mock**
 
 `mockPrisma.expense` already has `groupBy`, `findUnique`, `update` (from earlier work in this file). Add `findMany`:
 
@@ -729,7 +731,7 @@ export interface TopExpenseItem {
     },
 ```
 
-- [ ] **Step 3: Write the failing tests**
+- [x] **Step 3: Write the failing tests**
 
 Add this new `describe` block directly after the `describe('getSpendingByPersonCategory', ...)` block added in Task 2 (before `describe('updateExpense (category preserve-on-omit)', ...)`):
 
@@ -849,7 +851,7 @@ Add this new `describe` block directly after the `describe('getSpendingByPersonC
   });
 ```
 
-- [ ] **Step 4: Run the tests to verify they fail**
+- [x] **Step 4: Run the tests to verify they fail**
 
 ```bash
 cd money-split-backend && npx jest expenses.service --silent
@@ -857,7 +859,7 @@ cd money-split-backend && npx jest expenses.service --silent
 
 Expected: `FAIL` — `service.getTopExpenses is not a function`.
 
-- [ ] **Step 5: Implement `getTopExpenses`**
+- [x] **Step 5: Implement `getTopExpenses`**
 
 In `money-split-backend/src/expenses/expenses.service.ts`, add `TopExpenseItem` to the type import block.
 
@@ -910,7 +912,7 @@ Add this method directly after `getSpendingByPersonCategory` (added in Task 2):
   }
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 ```bash
 cd money-split-backend && npx jest expenses.service --silent
@@ -918,7 +920,7 @@ cd money-split-backend && npx jest expenses.service --silent
 
 Expected: `PASS`, all tests including the 7 new ones.
 
-- [ ] **Step 7: Add the controller endpoint**
+- [x] **Step 7: Add the controller endpoint**
 
 In `money-split-backend/src/expenses/expenses.controller.ts`, add `TopExpenseItem` to the type import block.
 
@@ -949,7 +951,7 @@ Add this method directly after `getSpendingByPersonCategory` (added in Task 2), 
   }
 ```
 
-- [ ] **Step 8: Typecheck**
+- [x] **Step 8: Typecheck**
 
 ```bash
 cd money-split-backend && npx tsc --noEmit
@@ -957,7 +959,7 @@ cd money-split-backend && npx tsc --noEmit
 
 Expected: no new errors.
 
-- [ ] **Step 9: Run the full backend test suite**
+- [x] **Step 9: Run the full backend test suite**
 
 ```bash
 cd money-split-backend && npx jest --silent
@@ -965,7 +967,7 @@ cd money-split-backend && npx jest --silent
 
 Expected: same pass/fail counts as after Task 2, plus the 7 new `getTopExpenses` tests passing.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 cd money-split-backend
@@ -986,7 +988,7 @@ git commit -m "feat: add GET /groups/:groupId/expenses/top endpoint"
 - Consumes: `GET /groups/:groupId/expenses/by-person`, `.../by-person-category`, `.../top` (Tasks 1-3).
 - Produces: `PersonSpending`, `PersonCategorySpending`, `TopExpenseItem` frontend types; `fetchSpendingByPerson({ groupId, currency, metric }): AsyncThunk`, `fetchSpendingByPersonCategory({ groupId, currency }): AsyncThunk`, `fetchTopExpenses({ groupId, currency, limit }): AsyncThunk`; `GroupState.spendingByPerson/spendingByPersonLoading/spendingByPersonError`, `.spendingByPersonCategory/spendingByPersonCategoryLoading/spendingByPersonCategoryError`, `.topExpenses/topExpensesLoading/topExpensesError`. Tasks 5-9 consume these exact names.
 
-- [ ] **Step 1: Add the three response types**
+- [x] **Step 1: Add the three response types**
 
 In `money-split-app/src/types/expense.types.ts`, add at the end of the file, after the existing `CategorySpending` interface:
 
@@ -1015,7 +1017,7 @@ export interface TopExpenseItem {
 }
 ```
 
-- [ ] **Step 2: Add the three API endpoint builders**
+- [x] **Step 2: Add the three API endpoint builders**
 
 In `money-split-app/src/constants/api.constants.ts`, add to the `GROUPS` object, directly after the existing `EXPENSES_BY_CATEGORY` entry:
 
@@ -1038,7 +1040,7 @@ In `money-split-app/src/constants/api.constants.ts`, add to the `GROUPS` object,
         },
 ```
 
-- [ ] **Step 3: Add Redux state fields**
+- [x] **Step 3: Add Redux state fields**
 
 In `money-split-app/src/store/slices/groupSlice.ts`, extend the type import from `expense.types` (line 3, currently `CreateExpenseRequest, UpdateExpenseRequest, Expense, HistoryTransaction, PaginatedHistoryResponse, CategorySpending`):
 
@@ -1074,7 +1076,7 @@ Add to `initialState`, directly after `categorySpendingError: null,` (currently 
     topExpensesError: null,
 ```
 
-- [ ] **Step 4: Add the three thunks**
+- [x] **Step 4: Add the three thunks**
 
 Add directly after the existing `fetchSpendingByCategory` thunk (currently lines 109-114):
 
@@ -1101,7 +1103,7 @@ export const fetchTopExpenses = createAsyncThunk(
 );
 ```
 
-- [ ] **Step 5: Add the reducer cases**
+- [x] **Step 5: Add the reducer cases**
 
 Add directly after the existing `fetchSpendingByCategory` reducer cases (currently lines 518-532, ending with the `fetchSpendingByCategory.rejected` case):
 
@@ -1153,7 +1155,7 @@ Add directly after the existing `fetchSpendingByCategory` reducer cases (current
             })
 ```
 
-- [ ] **Step 6: Typecheck**
+- [x] **Step 6: Typecheck**
 
 ```bash
 cd money-split-app && npx tsc --noEmit
@@ -1161,7 +1163,7 @@ cd money-split-app && npx tsc --noEmit
 
 Expected: no new errors.
 
-- [ ] **Step 7: Lint**
+- [x] **Step 7: Lint**
 
 ```bash
 cd money-split-app && npx eslint src/types/expense.types.ts src/constants/api.constants.ts src/store/slices/groupSlice.ts
@@ -1169,7 +1171,7 @@ cd money-split-app && npx eslint src/types/expense.types.ts src/constants/api.co
 
 Expected: no new errors.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 cd money-split-app
@@ -1189,7 +1191,7 @@ git commit -m "feat: add types, endpoints, and thunks for the three new analytic
 - Consumes: `PersonSpending` type, `spendingByPerson`/`spendingByPersonLoading`/`spendingByPersonError` state shape (Task 4).
 - Produces: `getMemberColor(memberId: string): string` (Task 7's stacked-bar card intentionally does not use this — see Global Constraints). `SpendingByPersonCardProps = { data: PersonSpending[] | null; currency: string; metric: 'paid' | 'share'; onMetricChange: (metric: 'paid' | 'share') => void; isLoading: boolean; error?: string | null }`. Task 9 renders `<SpendingByPersonCard>` with these exact props.
 
-- [ ] **Step 1: Create the member color palette**
+- [x] **Step 1: Create the member color palette**
 
 Create `money-split-app/src/lib/memberColors.ts`:
 
@@ -1219,7 +1221,7 @@ export function getMemberColor(memberId: string): string {
 }
 ```
 
-- [ ] **Step 2: Create the Spending by Person card**
+- [x] **Step 2: Create the Spending by Person card**
 
 Create `money-split-app/src/components/dashboard/SpendingByPersonCard.tsx`:
 
@@ -1314,7 +1316,7 @@ export function SpendingByPersonCard({ data, currency, metric, onMetricChange, i
 }
 ```
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 ```bash
 cd money-split-app && npx tsc --noEmit
@@ -1322,7 +1324,7 @@ cd money-split-app && npx tsc --noEmit
 
 Expected: no new errors.
 
-- [ ] **Step 4: Lint**
+- [x] **Step 4: Lint**
 
 ```bash
 cd money-split-app && npx eslint src/lib/memberColors.ts src/components/dashboard/SpendingByPersonCard.tsx
@@ -1330,7 +1332,7 @@ cd money-split-app && npx eslint src/lib/memberColors.ts src/components/dashboar
 
 Expected: no new errors.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd money-split-app
@@ -1349,7 +1351,7 @@ git commit -m "feat: add member color palette and Spending by Person card"
 - Consumes: `PersonCategorySpending` type, `spendingByPersonCategory`/`spendingByPersonCategoryLoading`/`spendingByPersonCategoryError` state shape (Task 4); `CATEGORY_ORDER`, `CATEGORY_LABELS`, `CATEGORY_ICONS`, `CATEGORY_COLORS` from `money-split-app/src/lib/expenseCategories.ts` (existing, unchanged).
 - Produces: `CategoryByPersonCardProps = { data: PersonCategorySpending[] | null; currency: string; isLoading: boolean; error?: string | null }`. Task 9 renders `<CategoryByPersonCard>` with these exact props.
 
-- [ ] **Step 1: Create the card**
+- [x] **Step 1: Create the card**
 
 Create `money-split-app/src/components/dashboard/CategoryByPersonCard.tsx`:
 
@@ -1437,7 +1439,7 @@ export function CategoryByPersonCard({ data, currency, isLoading, error }: Categ
 }
 ```
 
-- [ ] **Step 2: Typecheck**
+- [x] **Step 2: Typecheck**
 
 ```bash
 cd money-split-app && npx tsc --noEmit
@@ -1445,7 +1447,7 @@ cd money-split-app && npx tsc --noEmit
 
 Expected: no new errors.
 
-- [ ] **Step 3: Lint**
+- [x] **Step 3: Lint**
 
 ```bash
 cd money-split-app && npx eslint src/components/dashboard/CategoryByPersonCard.tsx
@@ -1453,7 +1455,7 @@ cd money-split-app && npx eslint src/components/dashboard/CategoryByPersonCard.t
 
 Expected: no new errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd money-split-app
@@ -1472,7 +1474,7 @@ git commit -m "feat: add Category breakdown per person stacked bar card"
 - Consumes: `TopExpenseItem` type, `topExpenses`/`topExpensesLoading`/`topExpensesError` state shape (Task 4); `CATEGORY_ICONS` from `expenseCategories.ts`.
 - Produces: `TopExpensesCardProps = { data: TopExpenseItem[] | null; currency: string; isLoading: boolean; error?: string | null; onSelect: (expenseId: string) => void }`. Task 9 renders `<TopExpensesCard>` with these exact props and supplies `onSelect` to open the edit modal.
 
-- [ ] **Step 1: Create the card**
+- [x] **Step 1: Create the card**
 
 Create `money-split-app/src/components/dashboard/TopExpensesCard.tsx`:
 
@@ -1527,7 +1529,7 @@ export function TopExpensesCard({ data, currency, isLoading, error, onSelect }: 
 }
 ```
 
-- [ ] **Step 2: Typecheck**
+- [x] **Step 2: Typecheck**
 
 ```bash
 cd money-split-app && npx tsc --noEmit
@@ -1535,7 +1537,7 @@ cd money-split-app && npx tsc --noEmit
 
 Expected: no new errors.
 
-- [ ] **Step 3: Lint**
+- [x] **Step 3: Lint**
 
 ```bash
 cd money-split-app && npx eslint src/components/dashboard/TopExpensesCard.tsx
@@ -1543,7 +1545,7 @@ cd money-split-app && npx eslint src/components/dashboard/TopExpensesCard.tsx
 
 Expected: no new errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd money-split-app
@@ -1553,138 +1555,48 @@ git commit -m "feat: add Top Expenses ranked list card"
 
 ---
 
-### Task 8: Frontend — Analytics tab toggle component
+### Task 8: Frontend — GroupAnalytics page component
 
 **Files:**
-- Create: `money-split-app/src/components/dashboard/AnalyticsTabs.tsx`
+- Create: `money-split-app/src/components/GroupAnalytics.tsx`
 
 **Interfaces:**
-- Produces: `AnalyticsTabsProps = { activeTab: 'overview' | 'analytics'; onTabChange: (tab: 'overview' | 'analytics') => void }`. Task 9 renders `<AnalyticsTabs>` on `Dashboard.tsx` with these exact props.
+- Consumes: `SpendingByCategoryCard` (existing, `money-split-app/src/components/dashboard/SpendingByCategoryCard.tsx`, unchanged), `SpendingByPersonCard` (Task 5), `CategoryByPersonCard` (Task 6), `TopExpensesCard` (Task 7), `fetchSpendingByCategory`/`fetchSpendingByPerson`/`fetchSpendingByPersonCategory`/`fetchTopExpenses` thunks and their state (Task 4), `EditExpenseModal` (existing, `money-split-app/src/components/group-detail/EditExpenseModal.tsx`, unchanged), `useGroup()` (existing, `money-split-app/src/context/GroupContext.tsx` — `expenses`, `currency`, `groupName`, `activeGroupId`, `switchGroup`, `updateExpense`).
+- Produces: `GroupAnalytics` component (named export), the render target Task 9 wires into `App.tsx`'s `/group/:id/analytics` route. Not reachable from the UI until Task 9 registers the route — this task only creates the component in isolation, the same way Tasks 5-7 created cards before anything rendered them.
 
-- [ ] **Step 1: Create the component**
+- [ ] **Step 1: Create the page component**
 
-Create `money-split-app/src/components/dashboard/AnalyticsTabs.tsx`:
-
-```typescript
-interface AnalyticsTabsProps {
-    activeTab: 'overview' | 'analytics';
-    onTabChange: (tab: 'overview' | 'analytics') => void;
-}
-
-export function AnalyticsTabs({ activeTab, onTabChange }: AnalyticsTabsProps) {
-    return (
-        <div className="flex gap-1 bg-secondary/50 rounded-full p-1 w-fit">
-            <button
-                type="button"
-                onClick={() => onTabChange('overview')}
-                className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'overview' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
-            >
-                Overview
-            </button>
-            <button
-                type="button"
-                onClick={() => onTabChange('analytics')}
-                className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'analytics' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
-            >
-                Analytics
-            </button>
-        </div>
-    );
-}
-```
-
-- [ ] **Step 2: Typecheck**
-
-```bash
-cd money-split-app && npx tsc --noEmit
-```
-
-Expected: no new errors.
-
-- [ ] **Step 3: Lint**
-
-```bash
-cd money-split-app && npx eslint src/components/dashboard/AnalyticsTabs.tsx
-```
-
-Expected: no new errors.
-
-- [ ] **Step 4: Commit**
-
-```bash
-cd money-split-app
-git add src/components/dashboard/AnalyticsTabs.tsx
-git commit -m "feat: add Overview/Analytics tab toggle component"
-```
-
----
-
-### Task 9: Frontend — wire everything into Dashboard.tsx
-
-**Files:**
-- Modify: `money-split-app/src/components/Dashboard.tsx`
-
-**Interfaces:**
-- Consumes: `AnalyticsTabs` (Task 8), `SpendingByPersonCard` (Task 5), `CategoryByPersonCard` (Task 6), `TopExpensesCard` (Task 7), `fetchSpendingByPerson`/`fetchSpendingByPersonCategory`/`fetchTopExpenses` thunks and their state (Task 4), `EditExpenseModal` (existing, `money-split-app/src/components/group-detail/EditExpenseModal.tsx`, unchanged).
-
-- [ ] **Step 1: Rewrite `Dashboard.tsx`**
-
-Replace the full contents of `money-split-app/src/components/Dashboard.tsx`:
+Create `money-split-app/src/components/GroupAnalytics.tsx`:
 
 ```typescript
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { useGroupEvents } from '../hooks/useGroupEvents';
 import { useGroup } from '../context/GroupContext';
-import { TotalSpentCard } from './dashboard/TotalSpentCard';
-import { BalanceCard } from './dashboard/BalanceCard';
-import { GroupDetailsCard } from './dashboard/GroupDetailsCard';
-import { QuickStatsCard } from './dashboard/QuickStatsCard';
 import { SpendingByCategoryCard } from './dashboard/SpendingByCategoryCard';
 import { SpendingByPersonCard } from './dashboard/SpendingByPersonCard';
 import { CategoryByPersonCard } from './dashboard/CategoryByPersonCard';
 import { TopExpensesCard } from './dashboard/TopExpensesCard';
-import { AnalyticsTabs } from './dashboard/AnalyticsTabs';
-import { useBalanceCalculations } from './dashboard/useBalanceCalculations';
-import { WelcomeView } from './dashboard/WelcomeView';
 import { EditExpenseModal } from './group-detail/EditExpenseModal';
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { isBalanceSettled } from '../lib/accounting';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { fetchSpendingByCategory, fetchSpendingByPerson, fetchSpendingByPersonCategory, fetchTopExpenses } from '../store/slices/groupSlice';
 import { SplitType, type Expense, type Split } from '../types/expense.types';
 
-export function Dashboard() {
+export function GroupAnalytics() {
     const navigate = useNavigate();
     const { id } = useParams<{ id: string }>();
     useGroupEvents(id ?? '');
-    const { groups, members, expenses, balances, currency, groupName, isLoading, error, activeGroupId, switchGroup, currentUserBalance, updateExpense } = useGroup();
-    const authUser = useAppSelector(state => state.auth.user);
-    const currentMemberId = useMemo(
-        () => members.find(m => m.userId === authUser?.id)?.id,
-        [members, authUser],
-    );
-    const localCalc = useBalanceCalculations({ balances, currentMemberId });
-    const { owedToYou, youOwe } = useMemo(() => {
-        if (currentUserBalance && Object.keys(currentUserBalance.balances).length > 0) {
-            const owed: Array<{ currency: string; amount: number }> = [];
-            const owing: Array<{ currency: string; amount: number }> = [];
-            Object.entries(currentUserBalance.balances).forEach(([curr, data]) => {
-                if (!isBalanceSettled(data.totalOwed)) owed.push({ currency: curr, amount: data.totalOwed });
-                if (!isBalanceSettled(data.totalOwe)) owing.push({ currency: curr, amount: data.totalOwe });
-            });
-            return { owedToYou: owed, youOwe: owing };
-        }
-        return localCalc;
-    }, [currentUserBalance, localCalc]);
+    const { expenses, currency, groupName, activeGroupId, switchGroup, updateExpense } = useGroup();
+    const dispatch = useAppDispatch();
 
-    // Sync active group with URL
+    // Sync active group with URL, same as Dashboard.tsx.
     useEffect(() => {
         if (id && id !== activeGroupId) {
             switchGroup(id);
         }
     }, [id, activeGroupId, switchGroup]);
 
-    const dispatch = useAppDispatch();
     const categorySpending = useAppSelector(state => state.groups.categorySpending);
     const categorySpendingLoading = useAppSelector(state => state.groups.categorySpendingLoading);
     const categorySpendingError = useAppSelector(state => state.groups.categorySpendingError);
@@ -1698,51 +1610,30 @@ export function Dashboard() {
     const topExpensesLoading = useAppSelector(state => state.groups.topExpensesLoading);
     const topExpensesError = useAppSelector(state => state.groups.topExpensesError);
 
-    useEffect(() => {
-        if (id) {
-            void dispatch(fetchSpendingByCategory({ groupId: id, currency }));
-        }
-        // currency is included so switching the group's currency triggers a
-        // refetch instead of relabeling stale totals with the new symbol.
-    }, [id, currency, dispatch]);
-
-    const [dashboardTab, setDashboardTab] = useState<'overview' | 'analytics'>('overview');
     const [personMetric, setPersonMetric] = useState<'paid' | 'share'>('paid');
-    const hasOpenedAnalyticsRef = useRef(false);
 
-    const fetchAnalytics = useCallback((metric: 'paid' | 'share') => {
+    // Fetch all four analytics datasets on mount and whenever id/currency
+    // change. This is a dedicated route, not a tab reveal inside an
+    // already-mounted page, so there is no first-reveal gating to build —
+    // navigating here is the reveal.
+    useEffect(() => {
         if (!id) return;
-        void dispatch(fetchSpendingByPerson({ groupId: id, currency, metric }));
+        void dispatch(fetchSpendingByCategory({ groupId: id, currency }));
+        void dispatch(fetchSpendingByPerson({ groupId: id, currency, metric: personMetric }));
         void dispatch(fetchSpendingByPersonCategory({ groupId: id, currency }));
         void dispatch(fetchTopExpenses({ groupId: id, currency, limit: 5 }));
+        // personMetric is deliberately excluded — metric changes are handled
+        // by handleMetricChange below, which dispatches only the one
+        // affected thunk instead of refetching all four cards.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id, currency, dispatch]);
 
-    // Fetch all three analytics endpoints once, the first time the
-    // Analytics tab is revealed.
-    useEffect(() => {
-        if (dashboardTab === 'analytics' && !hasOpenedAnalyticsRef.current) {
-            hasOpenedAnalyticsRef.current = true;
-            fetchAnalytics(personMetric);
-        }
-    }, [dashboardTab, fetchAnalytics, personMetric]);
-
-    // If the group currency changes after the tab has already been opened
-    // once, refetch with the new currency. Deliberately excludes
-    // fetchAnalytics/personMetric from deps: this effect only reacts to
-    // currency changes, not to the first-reveal fetch above re-running.
-    useEffect(() => {
-        if (hasOpenedAnalyticsRef.current) {
-            fetchAnalytics(personMetric);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currency]);
-
-    const handleMetricChange = (metric: 'paid' | 'share') => {
+    const handleMetricChange = useCallback((metric: 'paid' | 'share') => {
         setPersonMetric(metric);
         if (id) {
             void dispatch(fetchSpendingByPerson({ groupId: id, currency, metric }));
         }
-    };
+    }, [id, currency, dispatch]);
 
     const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
     const [isUpdatingExpense, setIsUpdatingExpense] = useState(false);
@@ -1786,91 +1677,41 @@ export function Dashboard() {
         }
     };
 
-    const groupExists = groups.some(g => g.id === id);
-
-    if (id && !groupExists && !isLoading) {
-        return (
-            <div className="text-center py-20">
-                <h2 className="text-2xl font-bold mb-2">Group Not Found</h2>
-                <p className="text-muted-foreground mb-6">The group you're looking for doesn't exist or you don't have access.</p>
-                <button
-                    onClick={() => navigate('/')}
-                    className="bg-primary text-primary-foreground px-6 py-2 rounded-xl font-bold"
-                >
-                    Back to Overview
-                </button>
-            </div>
-        );
-    }
-
-    if (!isLoading && groups.length === 0) {
-        return <WelcomeView />;
-    }
-
-    if (error && members.length === 0) {
-        return (
-            <div className="bg-destructive/10 border border-destructive/20 rounded-2xl p-8 text-center">
-                <p className="text-destructive font-medium mb-2">Error loading data</p>
-                <p className="text-sm text-muted-foreground">{error}</p>
-            </div>
-        );
-    }
-
     return (
         <div className="space-y-8 pb-12">
-            {/* Group Summary Header */}
-            <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-background rounded-2xl p-6 border border-border/50">
-                <h2 className="text-2xl font-bold mb-2">{groupName}</h2>
-                <p className="text-muted-foreground text-sm">Quick Summary</p>
+            {/* Header — mirrors GroupDetail.tsx's sticky back-button header */}
+            <div className="bg-card/50 backdrop-blur-sm sticky top-0 z-30 -mx-4 px-4 py-4 border-b border-border/50 flex items-center gap-3">
+                <button
+                    onClick={() => navigate(-1)}
+                    className="p-2 hover:bg-secondary rounded-full transition-colors active:scale-95"
+                >
+                    <ArrowLeft className="w-5 h-5" />
+                </button>
+                <div>
+                    <h1 className="text-2xl font-black tracking-tight">Analytics</h1>
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{groupName}</p>
+                </div>
             </div>
 
-            <AnalyticsTabs activeTab={dashboardTab} onTabChange={setDashboardTab} />
-
-            {dashboardTab === 'overview' ? (
-                <>
-                    {/* Summary Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <TotalSpentCard expenses={expenses} currency={currency} />
-                        <BalanceCard type="owed" balances={owedToYou} delay={0.1} />
-                        <BalanceCard type="owing" balances={youOwe} delay={0.2} />
-                    </div>
-
-                    {/* Group Details Card */}
-                    <GroupDetailsCard
-                        members={members}
-                        expenseCount={expenses.length}
-                        onViewDetails={() => {
-                            void navigate('/group');
-                        }}
-                    />
-
-                    {/* Quick Stats */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <QuickStatsCard label="Active Members" value={members.length} />
-                        <QuickStatsCard label="Total Expenses" value={expenses.length} />
-                    </div>
-                </>
-            ) : (
-                <div className="space-y-6">
-                    <SpendingByCategoryCard data={categorySpending} currency={currency} isLoading={categorySpendingLoading} error={categorySpendingError} />
-                    <SpendingByPersonCard
-                        data={spendingByPerson}
-                        currency={currency}
-                        metric={personMetric}
-                        onMetricChange={handleMetricChange}
-                        isLoading={spendingByPersonLoading}
-                        error={spendingByPersonError}
-                    />
-                    <CategoryByPersonCard data={spendingByPersonCategory} currency={currency} isLoading={spendingByPersonCategoryLoading} error={spendingByPersonCategoryError} />
-                    <TopExpensesCard
-                        data={topExpenses}
-                        currency={currency}
-                        isLoading={topExpensesLoading}
-                        error={topExpensesError}
-                        onSelect={setEditingExpenseId}
-                    />
-                </div>
-            )}
+            <div className="space-y-6">
+                <SpendingByCategoryCard data={categorySpending} currency={currency} isLoading={categorySpendingLoading} error={categorySpendingError} />
+                <SpendingByPersonCard
+                    data={spendingByPerson}
+                    currency={currency}
+                    metric={personMetric}
+                    onMetricChange={handleMetricChange}
+                    isLoading={spendingByPersonLoading}
+                    error={spendingByPersonError}
+                />
+                <CategoryByPersonCard data={spendingByPersonCategory} currency={currency} isLoading={spendingByPersonCategoryLoading} error={spendingByPersonCategoryError} />
+                <TopExpensesCard
+                    data={topExpenses}
+                    currency={currency}
+                    isLoading={topExpensesLoading}
+                    error={topExpensesError}
+                    onSelect={setEditingExpenseId}
+                />
+            </div>
 
             <EditExpenseModal
                 isOpen={!!editingExpenseId && !!initialFormData}
@@ -1890,34 +1731,163 @@ export function Dashboard() {
 cd money-split-app && npx tsc --noEmit
 ```
 
-Expected: no errors. If `useGroup()`'s destructured `updateExpense` or `expenses` types don't line up exactly with `EditExpenseModal`'s `initialData`/`onSubmit` shape, compare directly against how `money-split-app/src/components/GroupDetail.tsx` (lines 286-325 and 447-453) already does the same derivation — the field names and types must match exactly since both components consume the same `useGroup()` context and the same `EditExpenseModal`.
+Expected: no new errors. If `useGroup()`'s destructured `updateExpense` or `expenses` types don't line up exactly with `EditExpenseModal`'s `initialData`/`onSubmit` shape, compare directly against how `money-split-app/src/components/GroupDetail.tsx` (lines 286-325 and 447-453) already does the same derivation — the field names and types must match exactly since both components consume the same `useGroup()` context and the same `EditExpenseModal`.
 
 - [ ] **Step 3: Lint**
 
 ```bash
-cd money-split-app && npx eslint src/components/Dashboard.tsx
+cd money-split-app && npx eslint src/components/GroupAnalytics.tsx
 ```
 
-Expected: no new errors (the `eslint-disable-next-line react-hooks/exhaustive-deps` comment is intentional — the effect must not depend on `fetchAnalytics`/`personMetric` or it would refetch on every metric change in addition to the dedicated `handleMetricChange` fetch).
+Expected: no new errors (the `eslint-disable-next-line react-hooks/exhaustive-deps` comment is intentional — the mount effect must not depend on `personMetric` or it would refetch all four cards on every metric change in addition to the dedicated `handleMetricChange` fetch).
 
-- [ ] **Step 4: Manual verification via live preview**
-
-Start the app (`preview_start` per this session's established pattern — see `money-split-app/.claude/launch.json` and root `.claude/launch.json`), sign in, and navigate to a group with expenses in multiple categories, paid/split across at least two members. Confirm:
-- Dashboard opens on "Overview" with no charts, exactly as before this feature.
-- Clicking "Analytics" reveals, in order: Spending by Category (unchanged from before), Spending by Person, Category breakdown per person, Top Expenses.
-- Toggling "Paid"/"Share" on Spending by Person changes the donut and legend, including the percentage column.
-- The stacked bar chart's segment colors match the category donut's colors for the same category.
-- Top Expenses shows at most 5 rows sorted largest-first; clicking a row opens the edit-expense modal pre-filled with that expense's data, and saving a change updates the row after the modal closes.
-- Loading skeletons appear briefly on first Analytics reveal; switching back to Overview and back to Analytics does not show the skeletons again (no refetch).
-- A group with no expenses in a category/among a subset of members shows each card's empty state, not a broken chart.
-- Check both light and dark mode, and a 375px viewport.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 cd money-split-app
-git add src/components/Dashboard.tsx
-git commit -m "feat: add Analytics tab with Spending by Person, Category by Person, and Top Expenses"
+git add src/components/GroupAnalytics.tsx
+git commit -m "feat: add GroupAnalytics page with Spending by Category, Spending by Person, Category by Person, and Top Expenses"
+```
+
+---
+
+### Task 9: Frontend — wire the `/group/:id/analytics` route and sidebar nav, remove the chart from Dashboard.tsx
+
+**Files:**
+- Modify: `money-split-app/src/App.tsx`
+- Modify: `money-split-app/src/components/Layout.tsx`
+- Modify: `money-split-app/src/components/Dashboard.tsx`
+
+**Interfaces:**
+- Consumes: `GroupAnalytics` (Task 8).
+- Produces: the `/group/:id/analytics` route; a new "Analytics" sidebar nav button in `Layout.tsx`'s "Current group" section; `Dashboard.tsx` reverted to zero charts (no `SpendingByCategoryCard`, no `categorySpending` state, no fetch effect).
+
+- [ ] **Step 1: Register the route in `App.tsx`**
+
+In `money-split-app/src/App.tsx`, add the lazy import directly after the existing `MemberManager` lazy import (currently line 22):
+
+```typescript
+const GroupAnalytics = lazy(() => import('./components/GroupAnalytics').then(m => ({ default: m.GroupAnalytics })));
+```
+
+Add the route directly after the existing `/group/:id/members` route (currently line 60):
+
+```typescript
+<Route path="/group/:id/analytics" element={<GroupAnalytics />} />
+```
+
+- [ ] **Step 2: Add the sidebar nav entry in `Layout.tsx`**
+
+In `money-split-app/src/components/Layout.tsx`, add `BarChart3` to the existing `lucide-react` import (currently line 2, `Users, PlusCircle, LogIn, LogOut, Home, ChevronLeft`):
+
+```typescript
+import { Users, PlusCircle, LogIn, LogOut, Home, ChevronLeft, BarChart3 } from 'lucide-react';
+```
+
+Add a new button directly after the existing "Manage members" button (currently lines 147-153), inside the same `activeGroupId &&` block:
+
+```typescript
+                            <button
+                                onClick={() => { void navigate(`/group/${activeGroupId}/members`); }}
+                                className={cn("w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors", location.pathname.includes('/members') ? "bg-primary/10 text-primary" : "hover:bg-secondary")}
+                            >
+                                <Users className="w-5 h-5" />
+                                <span className="font-medium">Manage members</span>
+                            </button>
+
+                            <button
+                                onClick={() => { void navigate(`/group/${activeGroupId}/analytics`); }}
+                                className={cn("w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors", location.pathname.includes('/analytics') ? "bg-primary/10 text-primary" : "hover:bg-secondary")}
+                            >
+                                <BarChart3 className="w-5 h-5" />
+                                <span className="font-medium">Analytics</span>
+                            </button>
+```
+
+(The first button is unchanged — shown only so the new button's placement directly after it is unambiguous.)
+
+- [ ] **Step 3: Remove the `SpendingByCategoryCard` wiring from `Dashboard.tsx`**
+
+In `money-split-app/src/components/Dashboard.tsx`, remove the `SpendingByCategoryCard` import (currently line 8: `import { SpendingByCategoryCard } from './dashboard/SpendingByCategoryCard';`).
+
+Change the store-hooks import (currently line 13) from:
+
+```typescript
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+```
+
+to:
+
+```typescript
+import { useAppSelector } from '../store/hooks';
+```
+
+(`useAppDispatch`/`dispatch` become unused once the fetch effect below is removed — nothing else in `Dashboard.tsx` dispatches an action.)
+
+Remove the `fetchSpendingByCategory` import entirely (currently line 14: `import { fetchSpendingByCategory } from '../store/slices/groupSlice';`).
+
+Remove the `dispatch` declaration, the three `categorySpending`/`categorySpendingLoading`/`categorySpendingError` selectors, and the fetch effect (currently lines 47-58):
+
+```typescript
+    const dispatch = useAppDispatch();
+    const categorySpending = useAppSelector(state => state.groups.categorySpending);
+    const categorySpendingLoading = useAppSelector(state => state.groups.categorySpendingLoading);
+    const categorySpendingError = useAppSelector(state => state.groups.categorySpendingError);
+
+    useEffect(() => {
+        if (id) {
+            void dispatch(fetchSpendingByCategory({ groupId: id, currency }));
+        }
+        // currency is included so switching the group's currency triggers a
+        // refetch instead of relabeling stale totals with the new symbol.
+    }, [id, currency, dispatch]);
+```
+
+Remove the card's render block at the end of the JSX (currently lines 120-121):
+
+```typescript
+            {/* Spending by Category */}
+            <SpendingByCategoryCard data={categorySpending} currency={currency} isLoading={categorySpendingLoading} error={categorySpendingError} />
+```
+
+After these four removals, `Dashboard.tsx` is byte-for-byte the same file it was before this whole feature started — Overview content (summary cards, group details card, quick stats) with no chart of any kind.
+
+- [ ] **Step 4: Typecheck**
+
+```bash
+cd money-split-app && npx tsc --noEmit
+```
+
+Expected: no new errors.
+
+- [ ] **Step 5: Lint**
+
+```bash
+cd money-split-app && npx eslint src/App.tsx src/components/Layout.tsx src/components/Dashboard.tsx
+```
+
+Expected: no new errors.
+
+- [ ] **Step 6: Manual verification via live preview**
+
+Start the app (`preview_start` per this session's established pattern — see `money-split-app/.claude/launch.json` and root `.claude/launch.json`), sign in, and navigate to a group with expenses in multiple categories, paid/split across at least two members. Confirm:
+- The Dashboard (`/group/:id`) shows no charts — summary cards, group details card, and quick stats only, exactly as before this feature.
+- The sidebar's "Current group" section shows "Analytics" directly after "Manage members", using the bar-chart icon.
+- Clicking "Analytics" navigates to `/group/:id/analytics` and renders, in order: Spending by Category, Spending by Person, Category breakdown per person, Top Expenses.
+- The "Analytics" sidebar item is highlighted active while on `/group/:id/analytics`; "Manage members" is not, and vice versa.
+- Toggling "Paid"/"Share" on Spending by Person changes the donut and legend, including the percentage column.
+- The stacked bar chart's segment colors match the category donut's colors for the same category.
+- Top Expenses shows at most 5 rows sorted largest-first; clicking a row opens the edit-expense modal pre-filled with that expense's data, and saving a change updates the row after the modal closes.
+- Refreshing directly on `/group/:id/analytics` (deep link) still renders all four cards correctly.
+- A group with no expenses in a category/among a subset of members shows each card's empty state, not a broken chart.
+- Check both light and dark mode, and a 375px viewport.
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd money-split-app
+git add src/App.tsx src/components/Layout.tsx src/components/Dashboard.tsx
+git commit -m "feat: wire /group/:id/analytics route and sidebar nav entry, remove chart from Dashboard"
 ```
 
 ---
