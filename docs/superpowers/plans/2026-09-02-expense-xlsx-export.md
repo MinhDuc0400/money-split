@@ -54,7 +54,7 @@
 **Interfaces:**
 - Produces: `buildExportFilename(groupName: string): { filename: string; filenameUtf8: string }` — a pure function with no Prisma/DB dependency. Task 2 imports this exact name and signature from `../helpers/filename.helper`.
 
-- [ ] **Step 1: Install `exceljs`**
+- [x] **Step 1: Install `exceljs`**
 
 ```bash
 cd money-split-backend && npm install exceljs
@@ -62,7 +62,7 @@ cd money-split-backend && npm install exceljs
 
 Expected: `package.json` gains a new `"exceljs": "^4.4.0"` (or current latest) entry under `dependencies`; `package-lock.json` updates. No `@types/exceljs` is installed — the package ships its own bundled type definitions (confirmed: its `index.d.ts` types `workbook.xlsx.writeBuffer()` as `Promise<Buffer>`), and the separate `@types/exceljs@1.3.2` on npm predates and conflicts with the current API.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Create `money-split-backend/src/helpers/filename.helper.spec.ts`:
 
@@ -107,7 +107,7 @@ describe('buildExportFilename', () => {
 });
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 ```bash
 cd money-split-backend && npx jest filename.helper --silent
@@ -115,7 +115,7 @@ cd money-split-backend && npx jest filename.helper --silent
 
 Expected: `FAIL` — `Cannot find module './filename.helper'`.
 
-- [ ] **Step 4: Implement `buildExportFilename`**
+- [x] **Step 4: Implement `buildExportFilename`**
 
 Create `money-split-backend/src/helpers/filename.helper.ts`:
 
@@ -144,7 +144,7 @@ export function buildExportFilename(
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 ```bash
 cd money-split-backend && npx jest filename.helper --silent
@@ -152,7 +152,7 @@ cd money-split-backend && npx jest filename.helper --silent
 
 Expected: `PASS`, all 5 tests.
 
-- [ ] **Step 6: Typecheck**
+- [x] **Step 6: Typecheck**
 
 ```bash
 cd money-split-backend && npx tsc --noEmit
@@ -160,7 +160,7 @@ cd money-split-backend && npx tsc --noEmit
 
 Expected: no new errors.
 
-- [ ] **Step 7: Lint**
+- [x] **Step 7: Lint**
 
 ```bash
 cd money-split-backend && npx eslint src/helpers/filename.helper.ts src/helpers/filename.helper.spec.ts
@@ -168,7 +168,7 @@ cd money-split-backend && npx eslint src/helpers/filename.helper.ts src/helpers/
 
 Expected: no new errors.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 cd money-split-backend
@@ -189,7 +189,7 @@ git commit -m "feat: add exceljs dependency and buildExportFilename helper"
 - Consumes: `buildExportFilename(groupName: string)` from Task 1 (`../helpers/filename.helper`); `assertActiveMember(groupId, userId)` (existing private method, `expenses.service.ts:245-260`).
 - Produces: `ExpensesService.exportExpenses(groupId: string, userId: string): Promise<{ buffer: Buffer; filename: string; filenameUtf8: string }>`. `GET /groups/:groupId/expenses/export` — **the full endpoint contract, binding for Task 3's frontend implementation**: no query params; `Authorization: Bearer <token>` (existing `JwtAuthGuard`, class-level on `ExpensesController`); 200 response is raw `.xlsx` bytes with `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` and `Content-Disposition: attachment; filename="<ascii-safe-name>-expenses.xlsx"; filename*=UTF-8''<percent-encoded-full-name>-expenses.xlsx`; failure is Nest's standard JSON error body (403 `{ statusCode, message, error }` when the caller isn't an active member of the group).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `money-split-backend/src/expenses/expenses.service.spec.ts`, add `import ExcelJS from 'exceljs';` to the top of the file (after the existing `import { SplitType } from '@prisma/client';` line).
 
@@ -351,7 +351,7 @@ Add this new `describe` block directly after the closing `});` of the `describe(
   });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 ```bash
 cd money-split-backend && npx jest expenses.service --silent
@@ -359,7 +359,7 @@ cd money-split-backend && npx jest expenses.service --silent
 
 Expected: `FAIL` — `service.exportExpenses is not a function`.
 
-- [ ] **Step 3: Implement `exportExpenses`**
+- [x] **Step 3: Implement `exportExpenses`**
 
 In `money-split-backend/src/expenses/expenses.service.ts`, add two new imports directly after the existing `import { EventsGateway } from '../events/events.gateway';` line:
 
@@ -448,7 +448,7 @@ Add this method directly after `getTopExpenses` (which ends at line 702, immedia
   }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 ```bash
 cd money-split-backend && npx jest expenses.service --silent
@@ -456,7 +456,7 @@ cd money-split-backend && npx jest expenses.service --silent
 
 Expected: `PASS`, all tests including the 5 new `exportExpenses` tests.
 
-- [ ] **Step 5: Add the controller endpoint**
+- [x] **Step 5: Add the controller endpoint**
 
 In `money-split-backend/src/expenses/expenses.controller.ts`, change the express type import from:
 
@@ -513,7 +513,7 @@ import {
 } from '@nestjs/common';
 ```
 
-- [ ] **Step 6: Typecheck**
+- [x] **Step 6: Typecheck**
 
 ```bash
 cd money-split-backend && npx tsc --noEmit
@@ -521,7 +521,7 @@ cd money-split-backend && npx tsc --noEmit
 
 Expected: no new errors.
 
-- [ ] **Step 7: Run the full backend test suite**
+- [x] **Step 7: Run the full backend test suite**
 
 ```bash
 cd money-split-backend && npx jest --silent
@@ -529,7 +529,7 @@ cd money-split-backend && npx jest --silent
 
 Expected: same pass count as before this task, plus the 5 new `exportExpenses` tests passing. Any pre-existing unrelated failures stay unchanged.
 
-- [ ] **Step 8: Lint**
+- [x] **Step 8: Lint**
 
 ```bash
 cd money-split-backend && npx eslint src/expenses/expenses.service.ts src/expenses/expenses.service.spec.ts src/expenses/expenses.controller.ts
@@ -537,7 +537,7 @@ cd money-split-backend && npx eslint src/expenses/expenses.service.ts src/expens
 
 Expected: no new errors.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 cd money-split-backend
@@ -563,7 +563,7 @@ git commit -m "feat: add GET /groups/:groupId/expenses/export endpoint"
   - Failure: standard Nest JSON error body (`{ statusCode, message, error }`), e.g. `403` if the caller isn't an active member of the group.
 - Produces: `api.getBlob(url: string, options?: RequestOptions): Promise<Blob>`; `API_ENDPOINTS.GROUPS.EXPENSES_EXPORT(id: string): string`; `exportGroupExpenses({ groupId: string }): AsyncThunk` returning a `Blob`, with **no `.addCase` reducers** (its result is read via `.unwrap()`, never stored in `GroupState`). Task 4 dispatches this exact thunk name with this exact argument shape.
 
-- [ ] **Step 1: Add the Blob-returning request helper**
+- [x] **Step 1: Add the Blob-returning request helper**
 
 In `money-split-app/src/lib/api.ts`, add this function directly after the existing `request<T>` function (before the `export const api = {` block):
 
@@ -616,7 +616,7 @@ export const api = {
 };
 ```
 
-- [ ] **Step 2: Add the API endpoint constant**
+- [x] **Step 2: Add the API endpoint constant**
 
 In `money-split-app/src/constants/api.constants.ts`, add to the `GROUPS` object, directly after the existing `EXPENSES_TOP` entry:
 
@@ -624,7 +624,7 @@ In `money-split-app/src/constants/api.constants.ts`, add to the `GROUPS` object,
         EXPENSES_EXPORT: (id: string) => `${API_BASE_URL}/groups/${id}/expenses/export`,
 ```
 
-- [ ] **Step 3: Add the export thunk**
+- [x] **Step 3: Add the export thunk**
 
 In `money-split-app/src/store/slices/groupSlice.ts`, add this directly after the existing `fetchTopExpenses` thunk (no `.addCase` reducers are added for it — its result is consumed via `.unwrap()` in `GroupDetail.tsx`, not through Redux state):
 
@@ -637,7 +637,7 @@ export const exportGroupExpenses = createAsyncThunk(
 );
 ```
 
-- [ ] **Step 4: Typecheck**
+- [x] **Step 4: Typecheck**
 
 ```bash
 cd money-split-app && npx tsc --noEmit
@@ -645,7 +645,7 @@ cd money-split-app && npx tsc --noEmit
 
 Expected: no new errors.
 
-- [ ] **Step 5: Lint**
+- [x] **Step 5: Lint**
 
 ```bash
 cd money-split-app && npx eslint src/lib/api.ts src/constants/api.constants.ts src/store/slices/groupSlice.ts
@@ -653,7 +653,7 @@ cd money-split-app && npx eslint src/lib/api.ts src/constants/api.constants.ts s
 
 Expected: no new errors.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd money-split-app
@@ -672,7 +672,7 @@ git commit -m "feat: add Blob-returning api.getBlob and exportGroupExpenses thun
 - Consumes: `exportGroupExpenses({ groupId: string })` and `api`/`API_ENDPOINTS` wiring from Task 3 (same submodule); existing `activeGroupId: string | null`, `groupName: string`, `dispatch` (from `useAppDispatch()`) already destructured/declared in this file (`GroupDetail.tsx:41,43,62`).
 - Produces: nothing consumed by another task — this is the last user-facing piece. Task 5 (review) exercises it via manual click-through.
 
-- [ ] **Step 1: Add the `Download` icon import**
+- [x] **Step 1: Add the `Download` icon import**
 
 Change line 4 of `money-split-app/src/components/GroupDetail.tsx` from:
 
@@ -686,7 +686,7 @@ to:
 import { LogOut, Trash2, Download } from 'lucide-react';
 ```
 
-- [ ] **Step 2: Import the export thunk**
+- [x] **Step 2: Import the export thunk**
 
 Change line 22 from:
 
@@ -700,7 +700,7 @@ to:
 import { settleAllApi, settleGuestApi, fetchTransactionsNextPage, exportGroupExpenses } from '../store/slices/groupSlice';
 ```
 
-- [ ] **Step 3: Add the filename-sanitizing helper**
+- [x] **Step 3: Add the filename-sanitizing helper**
 
 Add this module-level function directly after the imports, before `export function GroupDetail() {` (currently line 28):
 
@@ -712,7 +712,7 @@ function sanitizeFilenamePart(name: string): string {
 
 This is a small, non-exported helper purely for the anchor's `download` attribute — it does not need to match the backend's `buildExportFilename` byte-for-byte. The frontend never reads the backend's `Content-Disposition` header (see Task 3's Interfaces block); it names the file itself from `groupName`, which is already in scope via `useGroup()`. Browsers also sanitize filesystem-invalid characters in the `download` attribute value on save regardless, so this is a defensive, not load-bearing, cleanup step.
 
-- [ ] **Step 4: Add local state**
+- [x] **Step 4: Add local state**
 
 Add these two lines directly after the existing `const [deleteGroupError, setDeleteGroupError] = useState<string | null>(null);` (currently line 57):
 
@@ -721,7 +721,7 @@ Add these two lines directly after the existing `const [deleteGroupError, setDel
     const [exportError, setExportError] = useState<string | null>(null);
 ```
 
-- [ ] **Step 5: Add the export handler**
+- [x] **Step 5: Add the export handler**
 
 Add this directly after the existing `handleDeleteGroup` function (currently ends at line 288, before `handleUpdateExpense` begins):
 
@@ -749,7 +749,7 @@ Add this directly after the existing `handleDeleteGroup` function (currently end
     };
 ```
 
-- [ ] **Step 6: Add the Export button**
+- [x] **Step 6: Add the Export button**
 
 In the header action row (currently `GroupDetail.tsx:351-381`), insert this button directly after the `InvitationBox` block (currently lines 352-354) and before the "Manage members" button (currently lines 355-361):
 
@@ -764,7 +764,7 @@ In the header action row (currently `GroupDetail.tsx:351-381`), insert this butt
                     </button>
 ```
 
-- [ ] **Step 7: Add the error banner**
+- [x] **Step 7: Add the error banner**
 
 In the "Action error alerts" block (currently `GroupDetail.tsx:386-398`), add this directly after the existing `deleteGroupError` banner (currently lines 393-397), before the block's closing:
 
@@ -777,7 +777,7 @@ In the "Action error alerts" block (currently `GroupDetail.tsx:386-398`), add th
             )}
 ```
 
-- [ ] **Step 8: Typecheck**
+- [x] **Step 8: Typecheck**
 
 ```bash
 cd money-split-app && npx tsc --noEmit
@@ -785,7 +785,7 @@ cd money-split-app && npx tsc --noEmit
 
 Expected: no new errors.
 
-- [ ] **Step 9: Lint**
+- [x] **Step 9: Lint**
 
 ```bash
 cd money-split-app && npx eslint src/components/GroupDetail.tsx
@@ -794,6 +794,8 @@ cd money-split-app && npx eslint src/components/GroupDetail.tsx
 Expected: no new errors.
 
 - [ ] **Step 10: Manual verification via live preview**
+
+_Deferred by the Task 3/4 implementing agent: the backend endpoint was being built concurrently by a separate agent and no authenticated browser session was available, per the assignment instructions. Verified instead via `tsc --noEmit` (clean) and `eslint` (no new errors) plus a re-read of the edited code against the plan's documented endpoint contract. Left unchecked for Task 5's live click-through._
 
 Start the app (`preview_start` with the `frontend` and `backend` launch.json configs), sign in, and open a group that has at least one expense. Confirm:
 - An "Export" button appears in the Overview tab's header row, between the invite-code pill and "Manage members".
@@ -806,7 +808,7 @@ Start the app (`preview_start` with the `frontend` and `backend` launch.json con
 
 Revert any temporary throttling/URL edit used for the error-state check before moving on.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 cd money-split-app
@@ -822,7 +824,7 @@ git commit -m "feat: add Export button to GroupDetail header for xlsx expense ex
 
 **Interfaces:** None produced — this task only verifies Tasks 1-4's combined output and syncs submodule pointers. It assumes both the backend track (Tasks 1-2) and the frontend track (Tasks 3-4) have already been committed independently, by different workers, with no coordination beyond the endpoint contract fixed in Task 2/Task 3's Interfaces blocks.
 
-- [ ] **Step 1: Verify both submodules are on their expected commits**
+- [x] **Step 1: Verify both submodules are on their expected commits**
 
 ```bash
 cd /Users/ducnguyen/code/money-split
@@ -832,7 +834,7 @@ git -C money-split-app log --oneline -3
 
 Expected: the backend log shows, at the top, the two commits from Tasks 1-2 (`feat: add GET /groups/:groupId/expenses/export endpoint` and `feat: add exceljs dependency and buildExportFilename helper`); the app log shows, at the top, the two commits from Tasks 3-4 (`feat: add Export button to GroupDetail header for xlsx expense export` and `feat: add Blob-returning api.getBlob and exportGroupExpenses thunk`).
 
-- [ ] **Step 2: Run the full backend test suite**
+- [x] **Step 2: Run the full backend test suite**
 
 ```bash
 cd money-split-backend && npx jest --silent
@@ -840,7 +842,7 @@ cd money-split-backend && npx jest --silent
 
 Expected: `PASS`, including the 5 new `filename.helper` tests and the 5 new `exportExpenses` tests. No pre-existing test regresses.
 
-- [ ] **Step 3: Typecheck the backend**
+- [x] **Step 3: Typecheck the backend**
 
 ```bash
 cd money-split-backend && npx tsc --noEmit
@@ -848,7 +850,7 @@ cd money-split-backend && npx tsc --noEmit
 
 Expected: no errors.
 
-- [ ] **Step 4: Typecheck and lint the frontend**
+- [x] **Step 4: Typecheck and lint the frontend**
 
 ```bash
 cd money-split-app && npx tsc --noEmit
@@ -857,7 +859,7 @@ cd money-split-app && npx eslint .
 
 Expected: no errors from either command.
 
-- [ ] **Step 5: Write a throwaway script to verify the live endpoint contract**
+- [x] **Step 5: Write a throwaway script to verify the live endpoint contract**
 
 This confirms the actual bytes/headers the backend endpoint returns match exactly what Task 3's `requestBlob`/`api.getBlob` expects, without needing a full authenticated browser session. It creates its own test user/group/expense data directly via Prisma (using the local dev Postgres already configured in `money-split-backend/.env`'s `DATABASE_URL`), signs a JWT with the same payload shape and secret `JwtStrategy` validates against, hits the live endpoint, asserts on it, and cleans up all rows it created — including on failure.
 
@@ -973,7 +975,7 @@ main().catch((err) => {
 });
 ```
 
-- [ ] **Step 6: Run it against a live backend**
+- [x] **Step 6: Run it against a live backend**
 
 Start the backend dev server (ensure the local Postgres from `docker-compose.dev.yml` is running first if it isn't already):
 
@@ -1000,7 +1002,7 @@ If it prints `FAILED: ...` instead, stop and diagnose — this means the backend
 
 Stop the dev server (`Ctrl+C` in its terminal) once the script prints `OK`.
 
-- [ ] **Step 7: Delete the throwaway script**
+- [x] **Step 7: Delete the throwaway script**
 
 ```bash
 cd money-split-backend && rm scripts/verify-export-endpoint.ts
@@ -1009,7 +1011,7 @@ git status
 
 Expected: `git status` shows no tracked changes from this script (it was never committed) and the `scripts/` directory is removed if it was empty before this task, or left alone if other scripts already lived there.
 
-- [ ] **Step 8: Sync the root repo's submodule pointers**
+- [x] **Step 8: Sync the root repo's submodule pointers**
 
 ```bash
 cd /Users/ducnguyen/code/money-split
