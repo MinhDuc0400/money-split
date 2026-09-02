@@ -94,13 +94,13 @@ Behavior, fully enumerated (no open edge cases):
 - Normal ASCII name (`"Trip to Japan"`) → both variants are `"Trip to Japan-expenses.xlsx"`.
 - Name containing filesystem-invalid characters (`"Rent/Bills?"`) → both variants strip them → `"RentBills-expenses.xlsx"`.
 - Name that is entirely invalid characters or empty after stripping (`"???"`, `""`) → falls back to `"group-expenses.xlsx"` for both variants.
-- Name with non-ASCII characters that survive filesystem-char stripping (`"Nhóm bạn 💰"`) → `filenameUtf8` keeps them (`"Nhóm bạn 💰-expenses.xlsx"`, percent-encoded in the header by the controller via `encodeURIComponent`); `filename` falls back further, stripping non-ASCII too (`"Nhm bn -expenses.xlsx"` if any ASCII survives, else `"group-expenses.xlsx"` if nothing does).
+- Name with non-ASCII characters that survive filesystem-char stripping (`"Nhóm bạn 💰"`) → `filenameUtf8` keeps them (`"Nhóm bạn 💰-expenses.xlsx"`, percent-encoded in the header by the controller via `encodeURIComponent`); `filename` falls back further, stripping non-ASCII too (`"Nhm bn-expenses.xlsx"` — verified: diacritics and the emoji are removed, the surrounding ASCII and spacing survive, trimmed before the suffix is appended; falls back to `"group-expenses.xlsx"` only if nothing ASCII survives at all).
 
 `buildExportFilename` is a pure function of `groupName` with no Prisma/DB dependency, so it is unit-tested directly in `src/helpers/filename.helper.spec.ts` with no mocking required.
 
 ### Data query and sheet construction
 
-`ExpensesService.exportExpenses`, added to `money-split-backend/src/expenses/expenses.service.ts` directly after `getTopExpenses` (the last method in the class today):
+`ExpensesService.exportExpenses`, added to `money-split-backend/src/expenses/expenses.service.ts` directly after `getTopExpenses` (which ends at line 702, immediately before `getBalances` begins at line 703 — `getTopExpenses` is the last of the analytics-style read endpoints but not the last method in the file; `getBalances`, `getUserBalance`, `getSettlements`, `updateExpense`, `deleteExpense`, and two private helpers follow it and are unaffected by this change):
 
 ```typescript
 async exportExpenses(
