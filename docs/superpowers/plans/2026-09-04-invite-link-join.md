@@ -4,7 +4,7 @@
 
 **Goal:** Add a shareable `/join/:code` frontend route that previews a group and joins it in one click — automatically completing the join after a Google sign-in round-trip when the visitor wasn't already authenticated — backed by a new, unauthenticated `GET /groups/preview/:inviteCode` endpoint.
 
-**Architecture:** Backend: a new, reusable `@Public()` decorator (`SetMetadata` + `Reflector`) lets `JwtAuthGuard` skip its Passport check for exactly one route; `GroupsService.previewByInviteCode` reuses `join()`'s exact invite-code lookup pattern and returns only `{ name, currency, memberCount }`; `GroupsController` registers `GET preview/:inviteCode` before its existing `GET :id` route so Express's path matching doesn't swallow it. Frontend: a new `JoinInvite.tsx` page (in the existing `components/auth/` family alongside `Login.tsx`/`AuthCallback.tsx`/`JoinGroupOverlay.tsx`) drives a small `loading | ready | joining | error` state machine, calling `previewInvite`/`joinGroup` (both added to/reused from `useGroup()`); an invite code is stashed via new `authUtils` helpers across the Google OAuth redirect, and a `?autoJoin=1` query param (appended by `AuthCallback.tsx` on its post-login navigation) tells `JoinInvite.tsx` to complete the join automatically instead of showing the confirmation card again.
+**Architecture:** Backend: a new, reusable `@Public()` decorator (`SetMetadata` + `Reflector`) lets `JwtAuthGuard` skip its Passport check for exactly one route; `GroupsService.previewByInviteCode` reuses `join()`'s exact invite-code lookup pattern and returns `{ name, currency, memberCount }` with `memberCount` filtered to active members; `GroupsController` registers `GET preview/:inviteCode` before its existing `GET :id` route as conventional ordering (not a correctness requirement — `:id` only ever matches one path segment). Frontend: a new `JoinInvite.tsx` page (in the existing `components/auth/` family alongside `Login.tsx`/`AuthCallback.tsx`/`JoinGroupOverlay.tsx`) drives a small `loading | ready | joining | error` state machine, calling `previewInvite`/`joinGroup` (both added to/reused from `useGroup()`); a manual join failure stays on the `ready` card with an inline error, while an auto-join failure goes to the full-page `error` state with cause-appropriate copy. An invite code is stashed as `{ code, ts }` via new `authUtils` helpers across the Google OAuth redirect, with a 10-minute TTL enforced on read so an abandoned sign-in can never silently auto-join a user on a later, unrelated login; a `?autoJoin=1` query param (appended by `AuthCallback.tsx` on its post-login navigation, with `{ replace: true }`) tells `JoinInvite.tsx` to complete the join automatically instead of showing the confirmation card again.
 
 **Tech Stack:** Backend: NestJS 11, `@nestjs/passport`'s `AuthGuard`, `@nestjs/core`'s `Reflector` (no schema changes), Jest (TDD, mocked `PrismaService`). Frontend: React 19, React Router (`useParams`/`useSearchParams`), Redux Toolkit (`createAsyncThunk`, no new reducer cases), no new dependency.
 
@@ -14,15 +14,16 @@
 - **Do not touch anything under `money-split-backend/src/expenses/`** — an unrelated in-progress refactor (`refactor/expenses-service-split` branch) owns that directory. This plan's backend work is entirely within `src/groups/`, `src/auth/`, and `src/common/`, a disjoint file set.
 - **Endpoint contract** (binding for both backend and frontend tasks — see Task 2's and Task 3's Interfaces blocks for the full text): `GET /groups/preview/:inviteCode`, no auth required (`@Public()`), no query params. Success is `200` with JSON body `{ name: string; currency: string; memberCount: number }`. Failure is `404` with Nest's standard JSON error body when no non-deleted group has that invite code. No other failure mode exists (no auth failures possible).
 - The invite-code lookup in `previewByInviteCode` must uppercase the code and filter `deletedAt: null` in the same `findUnique` where-clause, copied verbatim from `GroupsService.join()` (`groups.service.ts:256-261`), so both endpoints agree on which codes resolve to a group.
-- `memberCount` is an **unfiltered** count of `GroupMember` rows (may include soft-deleted/removed members) — matching the existing unfiltered `_count` convention already used by `findAll()` and `findOne()` in `groups.service.ts`. This is a documented choice, not a bug.
-- Route order matters: `GET preview/:inviteCode` must be registered in `GroupsController` **before** the existing `GET :id` handler, or a request to `/groups/preview/ABC12345` gets captured by `findOne()` with `id` bound to the literal string `"preview"`.
-- `@Public()` is applied to exactly one route (`previewByInviteCode`) in this change. Every other route on `GroupsController`, `ExpensesController`, and `SettlementsController` is unannotated and keeps requiring auth via `JwtAuthGuard` exactly as it does today — this is additive and non-breaking, confirmed by the guard's fallback branch always running `super.canActivate(context)` when no `@Public()` metadata is present.
+- `memberCount` is a **filtered** count of `GroupMember` rows (`_count: { select: { members: { where: { deletedAt: null } } } }`, a Prisma 7 filtered count) — active members only, excluding soft-deleted/removed ones. This intentionally diverges from `findAll()`'s own unfiltered `_count` (`groups.service.ts:76-82`), because an unfiltered count would visibly overcount for a public preview shown to non-members; there is no "unfiltered members count" precedent that actually applies here (`findOne()`'s one `_count` counts `expenses`, not members — it filters its `members` include separately, by `deletedAt: null`).
+- Route order: `GET preview/:inviteCode` is registered in `GroupsController` **before** the existing `GET :id` handler. This is conventional, tidy ordering (the controller already has a similar pair, `:id/leave` before `:id`) — **not** a correctness requirement: `:id` only ever matches a single path segment, so a two-segment path like `/groups/preview/ABC12345` can never bind to it regardless of declaration order (checked against the project's real Express version).
+- `@Public()` is applied to exactly one route (`previewByInviteCode`) in this change. Every other route on `GroupsController`, `ExpensesController`, `SettlementsController`, `ExchangeRatesController`, and `BalancesController` — the five controllers that use `JwtAuthGuard`, all via class-level `@UseGuards(JwtAuthGuard)` — is unannotated and keeps requiring auth via `JwtAuthGuard` exactly as it does today. This is additive and non-breaking, confirmed by the guard's fallback branch always running `super.canActivate(context)` when no `@Public()` metadata is present. `GroupsController` also carries a class-level `@ApiBearerAuth()`, so the new route additionally gets `@ApiSecurity({})` to correct the generated Swagger docs (otherwise they'd claim this public route needs a bearer token).
 - The frontend preview thunk (`previewGroupByInviteCode`) gets **no `.addCase(pending/fulfilled/rejected)` reducers** — same "thunk with zero reducer cases" pattern already established by `exportGroupExpenses`. Its result is read via `.unwrap()` into the caller's own return value, never stored in `GroupState`.
-- The invite code survives the Google OAuth redirect via **`localStorage`** (new `authUtils.setPendingInviteCode`/`getPendingInviteCode`/`clearPendingInviteCode`, key `splitmoney_pending_invite_code`) — the same mechanism already used for the JWT token and user object across that exact redirect. The "is this a post-login auto-join return" signal is a **`?autoJoin=1` query param** appended by `AuthCallback.tsx`'s `navigate()` call, not a second storage flag — `AuthCallback.tsx` already reads query params via `useSearchParams()`, and a query param needs no cleanup/leak handling the way a forgotten storage flag would.
-- `JoinInvite.tsx`'s post-login auto-join path must **never render the confirmation (`ready`) card** — the preview promise's `.then()` branches directly into `performJoin` (setting `joining`) when `autoJoin && isAuthenticated`, skipping `ready` entirely, so there is no flash of the card between `loading` and `joining`.
+- The invite code survives the Google OAuth redirect via **`localStorage`** (new `authUtils.setPendingInviteCode`/`getPendingInviteCode`/`clearPendingInviteCode`, key `splitmoney_pending_invite_code`) — the same mechanism already used for the JWT token and user object across that exact redirect. **The stored value is `{ code, ts }`, not a bare code string, and `getPendingInviteCode` enforces a 10-minute TTL against `ts`** — this is a required fix, not an enhancement: a bare stored code never gets cleared if the user abandons the OAuth flow, so an unrelated login weeks later would silently auto-join the user to the old group with no confirmation shown (the auto-join path deliberately skips the confirmation card) and broadcast their name/avatar via `emitMemberJoined`. Any read that's missing, malformed, or older than the TTL is treated as absent (cleared, `null` returned), so it falls through to the existing default (`navigate('/')`) exactly as if no code had ever been stashed. The "is this a post-login auto-join return" signal is a separate **`?autoJoin=1` query param** appended by `AuthCallback.tsx`'s `navigate()` call, not a second storage flag — `AuthCallback.tsx` already reads query params via `useSearchParams()`, and a query param needs no cleanup/leak handling the way a forgotten storage flag would. That `navigate()` call also passes `{ replace: true }` so the one-time `/auth/callback?token=...` URL doesn't linger in browser history.
+- `JoinInvite.tsx`'s post-login auto-join path must **never render the confirmation (`ready`) card** — the preview promise's `.then()` branches directly into `performJoin(code, 'auto')` (setting `joining`) when `autoJoin && isAuthenticated`, skipping `ready` entirely, so there is no flash of the card between `loading` and `joining`.
 - `/join/:code` must be reachable in `App.tsx` regardless of `isAuthenticated` — a new `isJoinPage` check is added alongside the existing `isAuthPage` check, exempting `/join/:code` from the "unauthenticated → redirect to `/login`" branch, but (unlike `isAuthPage`) **not** from being shown to an already-authenticated user.
-- The "already a member" `409 ConflictException` from `joinGroup` is **not** special-cased — it surfaces as a plain error message on `JoinInvite.tsx`, exactly like `JoinGroupOverlay.tsx` already does today for the same error.
+- The "already a member" `409 ConflictException` from `joinGroup` is **not** special-cased with custom copy — it surfaces as a plain error message on `JoinInvite.tsx`, exactly like `JoinGroupOverlay.tsx` already does today. Where it's shown depends on trigger: `performJoin(code, trigger)` tracks whether the current join attempt is `'manual'` (a click from the confirmation card) or `'auto'` (the post-OAuth-redirect path). A **manual** failure keeps `status` at `'ready'` with the error rendered inline on the same card (preview data is still valid, matching `JoinGroupOverlay.tsx`'s pattern of never blanking the form); an **auto** failure transitions to the full-page `'error'` status (no card was ever shown on this visit to return to), with an `errorContext: 'invalid-link' | 'join-failed'` state driving accurate headline copy for the two different `'error'`-reaching cases (an unresolvable code vs. a valid, previewed invite whose join call itself failed).
 - Backend testing: Jest, TDD (RED then GREEN), mocked `PrismaService`. Frontend: no test runner exists in `money-split-app` (`package.json` scripts are only `dev`/`build`/`lint`/`preview`) — verification is `npx tsc --noEmit`, `npx eslint <changed files>`, and manual/live-preview click-through, consistent with every prior plan in this repo.
+- Task 5's Step 8 (the full Google OAuth round-trip, including the new stale-pending-invite-code TTL check) **cannot be completed by an autonomous implementer subagent** — it requires a live backend and a real Google OAuth consent flow with real credentials, neither of which a subagent can obtain on its own. That step is for the user/controller to run manually after Tasks 1-5 all land (or it can be folded into Task 6's review pass); a subagent should not mark it done from code inspection alone.
 
 ---
 
@@ -182,7 +183,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 }
 ```
 
-`Reflector` needs no explicit provider registration in any module — it is a core Nest provider injectable globally out of the box, and `JwtAuthGuard` is only ever instantiated via `@UseGuards(JwtAuthGuard)` at controller-class level (in `groups.controller.ts`, `expenses.controller.ts`, `settlements.controller.ts`), never via `APP_GUARD` — confirmed by grep of `main.ts` and every `*.module.ts`.
+`Reflector` needs no explicit provider registration in any module — it is a core Nest provider injectable globally out of the box, and `JwtAuthGuard` is only ever instantiated via `@UseGuards(JwtAuthGuard)` at controller-class level (in `groups.controller.ts`, `expenses.controller.ts`, `settlements.controller.ts`, `exchange-rates.controller.ts`, and `balances.controller.ts` — all five confirmed by grep), never via `APP_GUARD` — confirmed by grep of `main.ts` and every `*.module.ts`.
 
 - [ ] **Step 5: Run the test to verify it passes**
 
@@ -236,7 +237,7 @@ git commit -m "feat: add reusable @Public() route decorator and wire it into Jwt
 
 **Interfaces:**
 - Consumes: `Public()` from Task 1 (`../common/decorators/public.decorator`, relative to `src/groups/groups.controller.ts`).
-- Produces: `GroupsService.previewByInviteCode(inviteCode: string): Promise<GroupInvitePreview>`. `GET /groups/preview/:inviteCode` — **the full endpoint contract, binding for Task 3's frontend implementation**: no auth header required; no query params; success is `200` with JSON body `{ name: string; currency: string; memberCount: number }`; failure is `404` with Nest's standard JSON error body (`{ statusCode: 404, message: 'Group with invite code "<code>" not found', error: 'Not Found' }`) when no non-deleted group has that invite code.
+- Produces: `GroupsService.previewByInviteCode(inviteCode: string): Promise<GroupInvitePreview>`. `GET /groups/preview/:inviteCode` — **the full endpoint contract, binding for Task 3's frontend implementation**: no auth header required; no query params; success is `200` with JSON body `{ name: string; currency: string; memberCount: number }` where `memberCount` counts only active (`deletedAt: null`) members; failure is `404` with Nest's standard JSON error body (`{ statusCode: 404, message: 'Group with invite code "<code>" not found', error: 'Not Found' }`) when no non-deleted group has that invite code.
 
 - [ ] **Step 1: Write the failing service tests**
 
@@ -295,7 +296,7 @@ Add this new `describe` block directly after the closing `});` of the `describe(
 
       expect(mockPrisma.group.findUnique).toHaveBeenCalledWith({
         where: { inviteCode: 'AB123456', deletedAt: null },
-        include: { _count: { select: { members: true } } },
+        include: { _count: { select: { members: { where: { deletedAt: null } } } } },
       });
     });
 
@@ -354,7 +355,7 @@ Add this method directly after `join()` (which currently ends at line 309), befo
       },
       include: {
         _count: {
-          select: { members: true },
+          select: { members: { where: { deletedAt: null } } },
         },
       },
     });
@@ -390,10 +391,25 @@ import { Public } from '../common/decorators/public.decorator';
 import { GroupInvitePreview } from './types/group-invite-preview.type';
 ```
 
-Add this method directly after `findAll()` (currently ending at line 68) and **before** `findOne()`'s `@Get(':id')` handler (currently starting at line 70) — this ordering is required so `/groups/preview/ABC12345` isn't captured by `findOne()`'s `:id` param route:
+Also add `ApiSecurity` to the existing `@nestjs/swagger` import (currently `import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';`), making it:
+
+```typescript
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiSecurity,
+} from '@nestjs/swagger';
+```
+
+This is needed because `GroupsController` carries a class-level `@ApiBearerAuth()` (line 29) — without an override, the new public route would still be documented in the generated Swagger docs as requiring a bearer token. `@ApiSecurity({})` on the handler below corrects that.
+
+Add this method directly after `findAll()` (currently ending at line 68) and **before** `findOne()`'s `@Get(':id')` handler (currently starting at line 70). This ordering is conventional/tidy, matching the controller's existing `:id/leave`-before-`:id` pair — it is **not** required for correctness: `:id` only ever matches a single path segment, so a two-segment path like `/groups/preview/ABC12345` could never bind to `findOne()`'s `:id` route regardless of declaration order (checked against the project's real Express version):
 
 ```typescript
   @Public()
+  @ApiSecurity({})
   @Get('preview/:inviteCode')
   @ApiOperation({ summary: 'Preview a group by invite code (no authentication required)' })
   @ApiResponse({ status: 200, description: 'Returns minimal, non-sensitive group info.' })
@@ -473,8 +489,10 @@ export interface GroupInvitePreview {
 In `money-split-app/src/constants/api.constants.ts`, add to the `GROUPS` object, directly after the existing `JOIN` entry (currently line 14):
 
 ```typescript
-        PREVIEW: (code: string) => `${API_BASE_URL}/groups/preview/${code}`,
+        PREVIEW: (code: string) => `${API_BASE_URL}/groups/preview/${encodeURIComponent(code)}`,
 ```
+
+`code` here comes from a third-party-controlled link (the URL's `:code` param), not from the API/database like most other IDs interpolated elsewhere in this file — `encodeURIComponent()` is added for defense in depth.
 
 - [ ] **Step 3: Add the preview thunk**
 
@@ -498,27 +516,60 @@ export const previewGroupByInviteCode = createAsyncThunk('groups/previewByInvite
 });
 ```
 
-- [ ] **Step 4: Add pending-invite-code storage helpers**
+- [ ] **Step 4: Add pending-invite-code storage helpers, with a TTL (fixes a stale-invite-code security bug)**
 
-In `money-split-app/src/lib/auth.ts`, add this constant directly after the existing `const USER_KEY = 'splitmoney_user';` line (currently line 4):
+**Why this needs a timestamp and a TTL, not just a bare code string:** if a not-yet-authenticated user clicks "Sign in to join" (stashing the code) and then abandons the OAuth flow, nothing would otherwise ever clear the stashed key. An unrelated login weeks later would then find the stale code and — because the auto-join path deliberately skips the confirmation card — silently join that user to the old group with no confirmation shown, while the backend's `emitMemberJoined` broadcasts their name/avatar to that group over websocket. Storing `{ code, ts }` and enforcing a 10-minute TTL when reading it back closes this: any read that's missing, malformed, or older than the TTL is treated as absent (the key is cleared, `null` is returned), falling through to the existing default behavior exactly as if nothing had ever been stashed.
+
+In `money-split-app/src/lib/auth.ts`, add this directly after the existing `const USER_KEY = 'splitmoney_user';` line (currently line 4):
 
 ```typescript
 const PENDING_INVITE_KEY = 'splitmoney_pending_invite_code';
+// Long enough to cover "click sign-in, go through Google's consent screens,
+// come back"; short enough that a stashed code can never survive to an
+// unrelated later login.
+const PENDING_INVITE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+interface PendingInviteCodeEntry {
+    code: string;
+    ts: number; // Date.now() at the moment it was stashed
+}
 ```
 
-Add these three methods to the `authUtils` object, directly after the existing `clearUser` method (currently lines 35-37):
+Add these three methods to the `authUtils` object, directly after the existing `clearUser` method (currently lines 35-38):
 
 ```typescript
     setPendingInviteCode: (code: string) => {
-        localStorage.setItem(PENDING_INVITE_KEY, code);
+        const entry: PendingInviteCodeEntry = { code, ts: Date.now() };
+        localStorage.setItem(PENDING_INVITE_KEY, JSON.stringify(entry));
     },
     getPendingInviteCode: (): string | null => {
-        return localStorage.getItem(PENDING_INVITE_KEY);
+        const raw = localStorage.getItem(PENDING_INVITE_KEY);
+        if (!raw) return null;
+
+        try {
+            const entry = JSON.parse(raw) as Partial<PendingInviteCodeEntry>;
+            const isWellFormed = typeof entry.code === 'string' && typeof entry.ts === 'number';
+            const isExpired = !isWellFormed || Date.now() - entry.ts! > PENDING_INVITE_TTL_MS;
+
+            if (isExpired) {
+                localStorage.removeItem(PENDING_INVITE_KEY);
+                return null;
+            }
+
+            return entry.code!;
+        } catch {
+            localStorage.removeItem(PENDING_INVITE_KEY);
+            return null;
+        }
     },
     clearPendingInviteCode: () => {
         localStorage.removeItem(PENDING_INVITE_KEY);
     },
 ```
+
+Because the TTL check lives inside `getPendingInviteCode` itself, Task 5's `AuthCallback.tsx` change needs no special-casing beyond calling it — `getPendingInviteCode()` returning `null` already covers "never stashed," "malformed," and "expired" identically, and the existing `if (pendingInviteCode) { ... } else { navigate('/'); }` shape handles all three the same way.
+
+**Manual verification (no automated frontend test runner exists in this project):** after Task 5 wires this into `AuthCallback.tsx`, verify via browser devtools — set `localStorage.splitmoney_pending_invite_code` to `JSON.stringify({ code: 'ABC12345', ts: Date.now() - 11 * 60 * 1000 })` (11 minutes old) and complete a normal Google login; confirm it lands on `/` with no join and no confirmation card, and that the key is gone from `localStorage` afterward. Then repeat with a fresh `ts: Date.now()` and confirm the auto-join path fires as expected. Also try setting the key to malformed JSON (e.g. `'not json'`) and confirm the same "treated as absent" behavior.
 
 - [ ] **Step 5: Typecheck**
 
@@ -632,6 +683,14 @@ import type { RootState } from '../../store';
 import type { GroupInvitePreview } from '../../types/group.types';
 
 type Status = 'loading' | 'ready' | 'joining' | 'error';
+// Which failure produced the full-page 'error' status — the two cases get
+// different headline copy (see the 'error' render branch below).
+type ErrorContext = 'invalid-link' | 'join-failed';
+
+const DEFAULT_ERROR_MESSAGE: Record<ErrorContext, string> = {
+    'invalid-link': 'This invite link is invalid or has expired.',
+    'join-failed': 'We could not complete joining this group. Please try again.',
+};
 
 export const JoinInvite: React.FC = () => {
     const { code } = useParams<{ code: string }>();
@@ -644,24 +703,37 @@ export const JoinInvite: React.FC = () => {
     const [status, setStatus] = useState<Status>('loading');
     const [preview, setPreview] = useState<GroupInvitePreview | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [errorContext, setErrorContext] = useState<ErrorContext>('invalid-link');
 
-    const performJoin = useCallback(async (inviteCode: string) => {
+    const performJoin = useCallback(async (inviteCode: string, trigger: 'manual' | 'auto') => {
         setStatus('joining');
         setErrorMessage(null);
         try {
             const member = await joinGroup(inviteCode);
             navigate(`/group/${member.groupId}/details`, { replace: true });
         } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : 'Failed to join group. Please try again.';
+            const msg = err instanceof Error ? err.message : DEFAULT_ERROR_MESSAGE['join-failed'];
             setErrorMessage(msg);
-            setStatus('error');
+            if (trigger === 'manual') {
+                // Manual click from the confirmation card: preview data is
+                // still valid, so stay on the card and show the error
+                // inline — matching JoinGroupOverlay.tsx's existing pattern
+                // of never blanking the form on a failed join.
+                setStatus('ready');
+            } else {
+                // Auto-join after the OAuth round-trip: no card was ever
+                // shown on this visit, so fall back to the full-page error.
+                setErrorContext('join-failed');
+                setStatus('error');
+            }
         }
     }, [joinGroup, navigate]);
 
     useEffect(() => {
         if (!code) {
-            setStatus('error');
+            setErrorContext('invalid-link');
             setErrorMessage('This invite link is invalid.');
+            setStatus('error');
             return;
         }
 
@@ -673,14 +745,15 @@ export const JoinInvite: React.FC = () => {
                 if (cancelled) return;
                 setPreview(result);
                 if (autoJoin && isAuthenticated) {
-                    void performJoin(code);
+                    void performJoin(code, 'auto');
                 } else {
                     setStatus('ready');
                 }
             })
             .catch((err: unknown) => {
                 if (cancelled) return;
-                const msg = err instanceof Error ? err.message : 'This invite link is invalid or has expired.';
+                const msg = err instanceof Error ? err.message : DEFAULT_ERROR_MESSAGE['invalid-link'];
+                setErrorContext('invalid-link');
                 setErrorMessage(msg);
                 setStatus('error');
             });
@@ -694,7 +767,7 @@ export const JoinInvite: React.FC = () => {
     }, [code]);
 
     const handleJoinClick = () => {
-        if (code) void performJoin(code);
+        if (code) void performJoin(code, 'manual');
     };
 
     const handleSignInToJoin = () => {
@@ -721,15 +794,18 @@ export const JoinInvite: React.FC = () => {
     }
 
     if (status === 'error') {
+        const isJoinFailure = errorContext === 'join-failed';
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] p-4 text-center">
                 <div className="bg-card p-8 rounded-2xl shadow-xl border border-border max-w-md w-full">
                     <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-6">
                         <XCircle className="w-8 h-8 text-destructive" />
                     </div>
-                    <h1 className="text-xl font-bold mb-2">Invite link invalid</h1>
+                    <h1 className="text-xl font-bold mb-2">
+                        {isJoinFailure ? "Couldn't complete your join" : 'Invite link invalid'}
+                    </h1>
                     <p className="text-muted-foreground mb-8 text-sm">
-                        {errorMessage || 'This invite link is invalid or has expired.'}
+                        {errorMessage || DEFAULT_ERROR_MESSAGE[errorContext]}
                     </p>
                     <Link
                         to="/"
@@ -737,6 +813,7 @@ export const JoinInvite: React.FC = () => {
                     >
                         Back to app
                     </Link>
+                    <div className="mt-4">{NotNowLink}</div>
                 </div>
             </div>
         );
@@ -770,6 +847,8 @@ export const JoinInvite: React.FC = () => {
     );
 };
 ```
+
+**Design note on the manual-vs-auto error split (fixes a prior contradiction):** a `trigger: 'manual' | 'auto'` argument on `performJoin` lets its `catch` branch differently by trigger. A manual join failure (clicked from the confirmation card) returns to `'ready'` with `errorMessage` set, so the card stays on screen with the error inline and the `{errorMessage && ...}` block above is reachable — matching `JoinGroupOverlay.tsx`'s established pattern of never blanking the form on a failed submit. An auto-join failure has no card to return to, so it goes to the full-page `'error'` status with `errorContext` set to `'join-failed'` so the headline reads "Couldn't complete your join" instead of the code-invalid "Invite link invalid" headline, which would be misleading for a transient network error or an already-a-member `409` after a perfectly valid preview.
 
 - [ ] **Step 4: Typecheck**
 
@@ -806,6 +885,7 @@ git commit -m "feat: add JoinInvite page and GroupContext.previewInvite"
 **Interfaces:**
 - Consumes: `authUtils.getPendingInviteCode`/`clearPendingInviteCode` from Task 3; `JoinInvite` component from Task 4 (`./components/auth/JoinInvite`, relative to `App.tsx`).
 - Produces: nothing consumed by another task — this is the last user-facing wiring. Task 6 (review) exercises the full round-trip via manual click-through.
+- **Dispatch note:** every step in this task except Step 8 is normal implementer work (write code, typecheck, lint, commit) and can be dispatched to a subagent like any other task. Step 8 cannot — it requires a live backend (Tasks 1-2) and a real Google OAuth consent round-trip with real credentials, which an autonomous subagent has no way to obtain. See Step 8 itself for how to handle this.
 
 - [ ] **Step 1: Update `AuthCallback.tsx`'s post-login navigation**
 
@@ -830,16 +910,20 @@ to:
                     authUtils.setToken(token);
                     authUtils.setUser(user);
 
+                    // getPendingInviteCode() already treats a missing,
+                    // malformed, or expired (>10 min old) stash as absent,
+                    // so this falls through to navigate('/') in those cases
+                    // exactly as if no code had ever been stashed.
                     const pendingInviteCode = authUtils.getPendingInviteCode();
                     if (pendingInviteCode) {
                         authUtils.clearPendingInviteCode();
-                        navigate(`/join/${pendingInviteCode}?autoJoin=1`);
+                        navigate(`/join/${pendingInviteCode}?autoJoin=1`, { replace: true });
                     } else {
                         navigate('/');
                     }
 ```
 
-No other line in this file changes: the token-decode logic, the `userData` validity check, both failure branches (`dispatch(setError(...)); navigate('/login');`), and the `finally` block are untouched.
+No other line in this file changes: the token-decode logic, the `userData` validity check, both failure branches (`dispatch(setError(...)); navigate('/login');`), and the `finally` block are untouched. `{ replace: true }` is added so the one-time `/auth/callback?token=...` URL doesn't linger in browser history behind a back-button press.
 
 - [ ] **Step 2: Typecheck**
 
@@ -1002,14 +1086,17 @@ cd money-split-app && npx eslint src/App.tsx
 
 Expected: no new errors.
 
-- [ ] **Step 8: Manual verification via live preview**
+- [ ] **Step 8: Manual verification via live preview — NOT dispatchable to an autonomous implementer subagent**
 
-Start the app (`preview_start` with the frontend and backend launch configs). Confirm:
+**This step requires a live backend (Tasks 1-2 deployed/running) and a real Google OAuth consent round-trip with real credentials.** No autonomous implementer subagent can complete a live third-party OAuth login on its own, so this step must be performed by the user/controller directly — after Tasks 1-5 have all landed — rather than checked off by a subagent from code inspection alone. It can also be folded into Task 6's review pass if that's more convenient, since Task 6 already runs after everything else is committed.
+
+When performed (by a human, using `preview_start` with the frontend and backend launch configs), confirm:
 - In a fresh/incognito session (no prior login), visiting `/join/<a real group's invite code>` shows a brief loading spinner, then a confirmation card with the correct group name, member count, and currency, and a "Sign in to join" button.
-- Clicking "Sign in to join" redirects to Google; after completing sign-in, the browser lands on `/group/:id/details` for that group, having auto-joined — with **no** intermediate confirmation card shown along the way.
+- Clicking "Sign in to join" redirects to Google; after completing sign-in, the browser lands on `/group/:id/details` for that group, having auto-joined — with **no** intermediate confirmation card shown along the way, and the `/auth/callback?token=...` URL is not reachable via the back button.
 - In an already-authenticated session for a user not yet in that group, visiting `/join/<code>` shows "Join group"; clicking it navigates to `/group/:id/details` and the group now appears in the group list/sidebar.
-- Visiting `/join/<a garbage/invalid code>` shows the "Invite link invalid" error card with a working "Back to app" link, both as a fresh and as an authenticated visitor.
-- Visiting `/join/<code>` for a group the current user is already a member of, then clicking "Join group" again, shows the resulting error message inline without crashing.
+- Visiting `/join/<a garbage/invalid code>` shows the "Invite link invalid" error card with a working "Back to app" link and a "Not now" link, both as a fresh and as an authenticated visitor.
+- Visiting `/join/<code>` for a group the current user is already a member of, then clicking "Join group" again, keeps the confirmation card on screen and shows the resulting error message inline (not a full-page error) without crashing.
+- A stale pending invite code (created, or edited via devtools to appear created, more than 10 minutes ago) is silently ignored on the next unrelated login: it lands on `/`, no join happens, and no confirmation card is shown.
 - The existing "Join Group" overlay (paste-a-code flow, reached from within the app) still works unchanged.
 - Every pre-existing route (`/`, `/groups`, `/group/:id`, `/group/:id/details`, `/login`, `/auth/callback` with a normal login and no pending invite code) still works exactly as before.
 
@@ -1180,7 +1267,7 @@ cd money-split-backend && rm scripts/verify-preview-endpoint.ts
 git status
 ```
 
-Expected: `git status` shows no tracked changes from this script (it was never committed) and the `scripts/` directory is removed if it was empty before this task, or left alone if other scripts already lived there.
+Expected: `git status` shows no tracked changes from this script (it was never committed). `money-split-backend/scripts/` already contains a pre-existing `migrate.sh` today, so nothing about the directory itself needs removing or checking here.
 
 - [ ] **Step 8: Sync the root repo's submodule pointers**
 
